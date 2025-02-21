@@ -1,0 +1,3050 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: cp4i-demo
+  namespace: default
+spec:
+  workspaces:
+    - name: cp4i-ws
+  finally:
+    - name: output-usage
+      params:
+        - name: SCRIPT
+          value: >-
+            cd workspace
+
+            oc delete configmap/pipeline-cp4i-demo-output -n default --ignore-not-found=true 
+
+            oc delete configmap/pipeline-ea-demo-output -n default --ignore-not-found=true 
+
+            oc delete configmap/pipeline-lsr-demo-output -n default --ignore-not-found=true 
+
+            oc delete configmap/pipeline-mailpit-demo-output -n default --ignore-not-found=true 
+
+            if [[ "$(params.CP4I_VERSION)" == "16.1.0" ]] || [[ "$(params.CP4I_VERSION)" == "16.1.1" ]]; then
+                if [[ "$(tasks.setup-workspace.results.output)" == "true" ]]; then
+                    CP4I_URL=$(oc get platformnavigator cp4i-navigator -n $(params.CP4I_NAMESPACE) -o jsonpath='{range .status.endpoints[?(@.name=="navigator")]}{.uri}{end}')
+                    CP4I_ADMIN_USER=$(oc get secret integration-admin-initial-temporary-credentials -n ibm-common-services -o jsonpath={.data.username} | base64 -d && echo)
+                    CP4I_ADMIN_INITIAL_PWD=$(oc get secret integration-admin-initial-temporary-credentials -n ibm-common-services -o jsonpath={.data.password} | base64 -d && echo)
+                    echo "----------------------------"
+                    echo "CP4I Platform UI..."
+                    echo "   UI URL: " $CP4I_URL
+                    echo "   Admin user: " $CP4I_ADMIN_USER
+                    echo "   Admin initial password: " $CP4I_ADMIN_INITIAL_PWD
+                    echo "----------------------------"
+                    oc create configmap pipeline-cp4i-demo-output -n default 
+                    oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed for v$(params.CP4I_VERSION)\",\"cp4i-url\":\"${CP4I_URL}\",\"cp4i-admin-username\":\"${CP4I_ADMIN_USER}\",\"cp4i-admin-initial-password\":\"${CP4I_ADMIN_INITIAL_PWD}\"}}"
+
+                    if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)" == "true" ]]; then
+                        EEM_URL=$(oc get eventendpointmanagement eem-demo-mgr -n $(params.CP4I_NAMESPACE) -o jsonpath='{range .status.endpoints[?(@.name=="ui")]}{.uri}{end}')
+                        if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                            EEM_ADMIN_USER=${CP4I_ADMIN_USER}
+                            EEM_ADMIN_PASSWORD=${CP4I_ADMIN_INITIAL_PWD}
+                        else
+                            EEM_ADMIN_USER='eem-admin'
+                            oc get secret eem-demo-mgr-ibm-eem-user-credentials -n tools -o jsonpath={.data."user-credentials\.json"} | base64 -d > user-credentials.json
+                            EEM_ADMIN_PASSWORD=$(jq -r '.users[] | select(.username=="eem-admin") | .password' user-credentials.json)
+                            rm -f user-credentials.json
+                        fi   
+                    else
+                        EEM_URL='n/a - EEM was not installed per user request.'
+                        EEM_ADMIN_USER='n/a - EEM was not installed per user request.'
+                        EEM_ADMIN_PASSWORD='n/a - EEM was not installed per user request.'
+                    fi
+
+                    if [[ "$(params.DEPLOY_EA_FLINK_OPERATOR)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_EA_FLINK)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_EVENT_PROCESSING)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_EVENT_PROCESSING_OPERATOR)" == "true" ]]; then
+                        EP_URL=$(oc get eventprocessing ep-demo -n $(params.CP4I_NAMESPACE) -o jsonpath='{range .status.endpoints[?(@.name=="ui")]}{.uri}{end}')
+                        if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                            EP_ADMIN_USER=${CP4I_ADMIN_USER}
+                            EP_ADMIN_PASSWORD=${CP4I_ADMIN_INITIAL_PWD}
+                        else
+                            EP_ADMIN_USER='ep-admin'
+                            oc get secret ep-demo-ibm-ep-user-credentials -n tools -o jsonpath={.data."user-credentials\.json"} | base64 -d > user-credentials.json
+                            EP_ADMIN_PASSWORD=$(jq -r '.users[] | select(.username=="ep-admin") | .password' user-credentials.json)
+                            rm -f user-credentials.json
+                        fi  
+                    else
+                        EP_URL='n/a - EP was not installed per user request.'
+                        EP_ADMIN_USER='n/a - EP was not installed per user request.'
+                        EP_ADMIN_PASSWORD='n/a - EP was not installed per user request.'
+                    fi
+
+                    if [[ "$(params.DEPLOY_EA_POSTGRESQL)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_EA_POSTGRESQL_OPERATOR)" == "true" ]]; then
+                        JDBC_URI=$(oc get secret pgsqldemo-pguser-demouser -n pgsql -o jsonpath='{.data.jdbc\-uri}' | base64 -d)
+                    else
+                        JDBC_URI='n/a - PGSQL was not installed per user request.'
+                    fi
+
+                    echo "----------------------------"
+                    echo "Event EndPoint Management..."
+                    echo "   UI URL:" $EEM_URL
+                    echo "   Admin user:" $EEM_ADMIN_USER
+                    echo "   Admin password:" $EEM_ADMIN_PASSWORD
+                    echo "Event Processing..."
+                    echo "   UI URL:" $EP_URL
+                    echo "   Admin user:" $EP_ADMIN_USER
+                    echo "   Admin password:" $EP_ADMIN_PASSWORD
+                    echo "PostgreSQL Database..."
+                    echo "   JDBC URI:" $JDBC_URI
+                    echo "----------------------------"
+                    oc create configmap pipeline-ea-demo-output -n default 
+                    oc patch configmap/pipeline-ea-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"eem-url\":\"${EEM_URL}\",\"eem-admin-username\":\"${EEM_ADMIN_USER}\",\"eem-admin-password\":\"${EEM_ADMIN_PASSWORD}\",\"ep-url\":\"${EP_URL}\",\"ep-admin-username\":\"${EP_ADMIN_USER}\",\"ep-admin-password\":\"${EP_ADMIN_PASSWORD}\",\"jdbc-uri\":\"${JDBC_URI}\"}}"
+
+                    if [[ "$(params.DEPLOY_LICENSE_REPORTER)" == "true" ]] &&
+                       [[ "$(params.DEPLOY_LICENSE_SERVICE)" == "true" ]]; then
+                        LSR_HOST=$(oc get route ibm-lsr-console -n ibm-licensing -o jsonpath={.spec.host})
+                        LSR_PATH=$(oc get route ibm-lsr-console -n ibm-licensing -o jsonpath={.spec.path})
+                        LSR_URL="https://"$LSR_HOST$LSR_PATH
+                        LSR_USER_NAME=$(oc get secret ibm-license-service-reporter-credentials -o jsonpath={.data.username} -n ibm-licensing | base64 -d)
+                        LSR_USER_PWD=$(oc get secret ibm-license-service-reporter-credentials -o jsonpath={.data.password} -n ibm-licensing | base64 -d)
+                        echo "----------------------------"
+                        echo "License Service Reporter Dashboard..."
+                        echo "   Dashboard URL: " $LSR_URL
+                        echo "   Admin user: " $LSR_USER_NAME
+                        echo "   Admin initial password: " $LSR_USER_PWD
+                        echo "----------------------------"       
+                        oc create configmap pipeline-lsr-demo-output -n default 
+                        oc patch configmap/pipeline-lsr-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"lsr-url\":\"${LSR_URL}\",\"lsr-admin-username\":\"${LSR_USER_NAME}\",\"lsr-admin-password\":\"${LSR_USER_PWD}\"}}"
+                    else
+                        echo "----------------------------"
+                        echo "License Service Reporter was not installed per user request."
+                        echo "----------------------------"
+                        oc create configmap pipeline-lsr-demo-output -n default 
+                        oc patch configmap/pipeline-lsr-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed, but License Service Reporter was not installed per user request.\"}}"
+                    fi
+
+                    MAILPIT_URL="http://"$(oc get route mailpit-ui -n mailpit -o jsonpath='{.status.ingress[0].host}')
+                    echo "----------------------------"
+                    echo "MailPit access information..."
+                    echo "   UI URL: " $MAILPIT_URL
+                    echo "   Admin user:  mailpit-admin" 
+                    echo "   Admin password: " $(oc get secret jgr-mailpit -n default -o jsonpath='{.data.password}' | base64 -d)
+                    echo "----------------------------"       
+                    oc create configmap pipeline-mailpit-demo-output -n default 
+                    oc patch configmap/pipeline-mailpit-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"mailpit-ui-url\":\"${MAILPIT_URL}\",\"mailpit-admin-username\":\"mailpit-admin\",\"mailpit-admin-password\":\"$(oc get secret jgr-mailpit -n default -o jsonpath='{.data.password}' | base64 -d)\"}}"
+                else
+                    echo "----------------------------"
+                    echo "Pipeline CP4I Demo couldn't run successfully."              
+                    echo "Check the logs in setup-workspace task for more details."
+                    echo "----------------------------"
+                    oc create configmap pipeline-cp4i-demo-output -n default 
+                    oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo couldn't run. Check the logs in setup-workspace task for more details.\"}}"
+                fi
+            else
+                echo "----------------------------"
+                echo "Pipeline CP4I Demo didn't run. The version provided is not valid."              
+                echo "Supported versions are 16.1.0 and 16.1.1. Correct parameter CP4I_VERSION and try again."
+                echo "----------------------------"
+                oc create configmap pipeline-cp4i-demo-output -n default 
+                oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo didn't run. The value provided in parameter CP4I_VERSION is not valid.\"}}"
+            fi
+        - name: VERSION
+          value: latest
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+  params:
+    - name: CP4I_NAMESPACE
+      default: tools
+      description: Namespace to deploy Platform UI
+      type: string
+    - name: ACE_NAMESPACE
+      default: tools
+      description: Namespace to deploy App Connect assets
+      type: string
+    - name: ES_NAMESPACE
+      default: tools
+      description: Namespace to deploy Event Streams assets
+      type: string
+    - name: CP4I_VERSION
+      default: 16.1.1
+      description: Version of CP4I Platform UI to deploy
+      type: string
+    - name: DEFAULT_SC
+      default: ocs-storagecluster-ceph-rbd
+      description: Default Storage Class for Cluster
+      type: string
+    - name: OCP_BLOCK_STORAGE
+      default: ocs-storagecluster-ceph-rbd
+      description: Block Storage Class for Cluster
+      type: string
+    - name: OCP_FILE_STORAGE
+      default: ocs-storagecluster-cephfs
+      description: File Storage Class for Cluster
+      type: string
+    - name: EEM_APIC_INT
+      default: 'true'
+      description: EEM integration with APIC flag
+      type: string
+    - name: EA_WATSONX
+      default: 'true'
+      description: Enable assets to demo integration with WatsonX
+      type: string
+    - name: EA_OIDC
+      default: 'false'
+      description: Enable OIDC sec for EA otherwise Local
+      type: string
+    - name: DEPLOY_LICENSE_SERVICE
+      default: 'false'
+      description: Deploy License Service resources
+      type: string
+    - name: DEPLOY_LICENSE_REPORTER
+      default: 'false'
+      description: Deploy License Service resources
+      type: string
+    - name: DEPLOY_ASSET_REPOSITORY_OPERATOR
+      default: 'true'
+      description: Deploy Asset repository operator
+      type: string
+    - name: DEPLOY_DATAPOWER_GATEWAY_OPERATOR
+      default: 'true'
+      description: Deploy DataPower Gateway operator
+      type: string
+    - name: DEPLOY_API_CONNECT_OPERATOR
+      default: 'true'
+      description: Deploy API Connect operator
+      type: string
+    - name: DEPLOY_APP_CONNECT_OPERATOR
+      default: 'true'
+      description: Deploy App Connect operator
+      type: string
+    - name: DEPLOY_MQ_OPERATOR
+      default: 'true'
+      description: Deploy MQ operator
+      type: string
+    - name: DEPLOY_ASPERA_HSTS_OPERATOR
+      default: 'false'
+      description: Deploy Aspera HSTS operator
+      type: string
+    - name: DEPLOY_EVENT_STREAMS_OPERATOR
+      default: 'true'
+      description: Deploy Event Streams operator
+      type: string
+    - name: DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR
+      default: 'true'
+      description: Deploy Event Endpoint Management operator
+      type: string
+    - name: DEPLOY_EA_FLINK_OPERATOR
+      default: 'true'
+      description: Deploy Flink operator
+      type: string
+    - name: DEPLOY_EVENT_PROCESSING_OPERATOR
+      default: 'true'
+      description: Deploy Event Processing operator
+      type: string
+    - name: DEPLOY_EA_POSTGRESQL_OPERATOR
+      default: 'true'
+      description: Deploy PostgreSQL operator
+      type: string
+    - name: IBM_ENTITLEMENT_KEY_ID
+      default: a65ac528-bbca-1425-8d07-fde9e2f1ff70
+      type: string
+    - name: DEPLOY_PLATFORM_UI
+      default: 'true'
+      description: Deploy platform UI
+      type: string
+    - name: DEPLOY_ASSET_REPO
+      default: 'true'
+      description: Deploy asset repo
+      type: string
+    - name: DEPLOY_API_CONNECT
+      default: 'true'
+      description: Deploy apiconnect
+      type: string
+    - name: DEPLOY_EVENT_STREAMS
+      default: 'true'
+      description: Deploy event streams
+      type: string
+    - name: DEPLOY_EVENT_ENDPOINT_MANAGEMENT
+      default: 'true'
+      description: Deploy event endpoint management
+      type: string
+    - name: DEPLOY_QUEUE_MANAGER
+      default: 'true'
+      description: Deploy queue manager
+      type: string
+    - name: DEPLOY_ACE_SWITCH_SERVER
+      default: 'true'
+      description: Deploy ACE Switch Server
+      type: string
+    - name: DEPLOY_ACE_DESIGNER
+      default: 'true'
+      description: Deploy ACE Designer
+      type: string
+    - name: DEPLOY_ACE_DASHBOARD
+      default: 'true'
+      description: Deploy ACE Dashboard
+      type: string
+    - name: DEPLOY_ACE_INTEGRATION_SERVER
+      default: 'true'
+      description: Deploy ACE Integration Server
+      type: string
+    - name: DEPLOY_EA_FLINK
+      default: 'true'
+      description: Deploy apache flink
+      type: string
+    - name: DEPLOY_EVENT_PROCESSING
+      default: 'true'
+      description: Deploy event processing
+      type: string
+    - name: DEPLOY_EA_POSTGRESQL
+      default: 'true'
+      description: Deploy postgresql
+      type: string
+    - name: IBM_SECRETS_MANAGER_ENDPOINT
+      default: >-
+        https://afa20521-cd75-4864-843f-e59fd0ffd49d.us-south.secrets-manager.appdomain.cloud
+      type: string
+    - name: COPY_TLS_CERTS
+      default: 'true'
+      type: string
+  tasks:
+    - name: setup-workspace
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            REPO_SIGNATURE="JGR-20250216-001"
+
+            echo "Setting up workspace for pipeline"
+
+            cd workspace/cp4i-ws
+
+            git clone --single-branch --branch dev https://github.com/gomezrjo/cp4i-deployer-helper.git
+
+            echo "Checking helper repo."
+
+            if grep -q "${REPO_SIGNATURE}" cp4i-deployer-helper/signature; then
+                echo "Valid signature in helper repo."
+            else
+                echo "Helper repo is out of sync, update this repo."
+                printf false | tee $(results.output.path)
+                exit 0
+            fi
+
+            echo "Checking SC provided in parameter DEFAULT_SC"
+            
+            SC_EXIST=$(oc get sc --no-headers | awk -v sc_name=$(params.DEFAULT_SC) '$1 == sc_name {print "yes"}')
+            
+            if [[ -z $SC_EXIST ]]; then 
+                echo "SC does NOT exist"
+                printf false | tee $(results.output.path)
+                exit 0
+            else 
+                echo "SC found"
+            fi
+
+            echo "Checking SC provided in parameter OCP_BLOCK_STORAGE"
+            
+            SC_EXIST=$(oc get sc --no-headers | awk -v sc_name=$(params.OCP_BLOCK_STORAGE) '$1 == sc_name {print "yes"}')
+
+            if [[ -z $SC_EXIST ]]; then 
+                echo "SC does NOT exist"
+                printf false | tee $(results.output.path)
+                exit 0
+            else 
+                echo "SC found"
+            fi
+
+            echo "Checking SC provided in parameter OCP_FILE_STORAGE"
+            
+            SC_EXIST=$(oc get sc --no-headers | awk -v sc_name=$(params.OCP_FILE_STORAGE) '$1 == sc_name {print "yes"}')
+
+            if [[ -z $SC_EXIST ]]; then 
+                echo "SC does NOT exist"
+                printf false | tee $(results.output.path)
+                exit 0
+            else 
+                echo "SC found"
+            fi
+
+            printf true | tee $(results.output.path)
+
+            tar -xvzf cp4i-deployer-helper/extras/toolkit-linux.tgz
+
+            chmod +x apic
+
+            echo "Workspace for pipeline is ready"
+        - name: VERSION
+          value: latest
+      retries: 3
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      timeout: 3h0m0s 
+      workspaces:
+        - name: cp4i-ws
+    - name: mail-server-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Creating namespace for mail server"
+            
+            if [[ -z "$(oc projects -q | awk '$1=="mailpit" {print $1}')" ]]; then
+                oc new-project mailpit
+            else
+                echo "Namespace mailpit already exists."
+            fi 
+            
+            echo "Generating mailpit-admin password"
+
+            MAILPIT_ADMIN_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
+            
+            echo "Preparing mail server deployment manifest"
+            
+            ( echo "cat <<EOF" ; cat resources/30a-mailpit-deployment.yaml ;) | \
+                MAILPIT_ADMIN_PWD=${MAILPIT_ADMIN_PWD} \
+                sh > mailpit-deployment.yaml
+            
+            echo "Deploying mailtraip server"
+            
+            oc apply -f mailpit-deployment.yaml
+
+            echo "Waiting for mail server to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.conditions[1].status}'=True
+            deployment/mailpit -n mailpit 2>/dev/null; do sleep 30; done
+
+            echo "Creating mail server service" 
+
+            oc apply -f resources/30b-mailpit-services.yaml
+
+            echo "Creating mail server route"
+
+            oc apply -f resources/30c-mailpit-route.yaml
+
+            oc create secret generic jgr-mailpit -n default --from-literal=username="mailpit-admin" --from-literal=password="${MAILPIT_ADMIN_PWD}" 
+
+            echo "Mail server is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - setup-workspace
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: set-default-storage-class
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            echo "Setting default storage class"
+            
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+                        
+            if [[ $(oc get sc | grep default | wc -l) -gt 0 ]]; then
+                oc get sc | grep default | awk '{system("oc patch storageclass " $1 " --patch-file resources/99-sc-remove-default.yaml")}'          
+            fi
+            
+            oc patch storageclass $(params.DEFAULT_SC) --patch-file resources/99-sc-set-default.yaml
+        - name: VERSION
+          value: latest
+      retries: 3
+      runAfter:
+        - mail-server-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      timeout: 3h0m0s
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: cert-mgr-operator-installation
+      params:
+        - name: SCRIPT
+          value: |-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Creating a new namespace called cert-manager-operator"
+
+            if [[ $(oc get projects | grep cert-manager-operator | wc -l) -eq 0 ]]; then
+                oc apply -f resources/00-cert-manager-namespace.yaml
+            fi 
+
+            echo "Creating operator group for cert-manager-operator namespace"
+
+            oc apply -f resources/00-cert-manager-operatorgroup.yaml
+            
+            echo "Creating subscription for cert-manager-operator"
+            
+            oc apply -f resources/00-cert-manager-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment cert-manager-operator-controller-manager -n cert-manager-operator --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Waiting for cert manager operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded csv/$SUB_NAME -n cert-manager-operator 2>/dev/null; do sleep 30; done
+
+            echo "Cert manager operator is ready."
+        - name: VERSION
+          value: latest
+      runAfter:
+        - set-default-storage-class
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: create-cp4i-base-namespaces
+      params:
+        - name: SCRIPT
+          value: |-
+            set -o xtrace
+
+            CP4I_NAMESPACES=($(params.CP4I_NAMESPACE) $(params.ACE_NAMESPACE) $(params.ES_NAMESPACE))
+
+            for NS in "${CP4I_NAMESPACES[@]}"
+
+            do
+            
+                echo "Creating a new namespace called" $NS
+
+                if [[ -z "$(oc projects -q | awk -v ns=$NS '$1 == ns {print $1}')" ]]; then
+                    oc new-project $NS
+                else
+                    echo "Namespace" $NS "already exists."
+                fi 
+
+            done
+
+            echo "Namespaces are ready"            
+        - name: VERSION
+          value: latest
+      runAfter:
+        - cert-mgr-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+    - name: get-entitlement-key
+      params:
+        - name: KEY_ID
+          value: $(params.IBM_ENTITLEMENT_KEY_ID)
+        - name: SECRETS_MANAGER_ENDPOINT_URL
+          value: $(params.IBM_SECRETS_MANAGER_ENDPOINT)
+      runAfter:
+        - create-cp4i-base-namespaces
+      taskRef:
+        kind: Task
+        name: ibmcloud-secrets-manager-get
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+    - name: create-ibm-entitlement-key
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            CP4I_NAMESPACES=($(params.CP4I_NAMESPACE) $(params.ACE_NAMESPACE) $(params.ES_NAMESPACE))
+
+            for NS in "${CP4I_NAMESPACES[@]}"
+
+            do
+
+                if oc get secret ibm-entitlement-key -n $NS >/dev/null 2>&1; then
+                    username=$(oc get secret ibm-entitlement-key -n $NS -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq -r '.auths."cp.icr.io".username')
+                    password=$(oc get secret ibm-entitlement-key -n $NS -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq -r '.auths."cp.icr.io".password')
+
+                    if [[ "$username" == "cp" ]] && [[ "$password" == "$(tasks.get-entitlement-key.results.secret-value)" ]]; then
+                        echo "Secret ibm-entitlement-key was already created. Skipping secret creation"
+                        exit 0
+                    else
+                        echo "Existing ibm-entitlement-key password does not match retrieved key. Deleting..."
+                        oc delete secret ibm-entitlement-key -n $NS --ignore-not-found=true
+
+                        echo "Creating new ibm-entitlement-key secret"
+                        oc create secret docker-registry ibm-entitlement-key \
+                            --docker-username=cp \
+                            --docker-password=$(tasks.get-entitlement-key.results.secret-value) \
+                            --docker-server=cp.icr.io \
+                            --namespace=$NS
+                    fi
+                else
+                    echo "Creating new ibm-entitlement-key secret"
+                    oc create secret docker-registry ibm-entitlement-key \
+                        --docker-username=cp \
+                        --docker-password=$(tasks.get-entitlement-key.results.secret-value) \
+                        --docker-server=cp.icr.io \
+                        --namespace=$NS
+                fi
+
+            done    
+        - name: VERSION
+          value: latest
+      runAfter:
+        - get-entitlement-key
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+    - name: cluster-issuer-deployment
+      params:
+        - name: SCRIPT
+          value: |-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Wating for Cert Manager WebHook to be present..."
+
+            while ! oc get service cert-manager-webhook -n cert-manager 2>/dev/null; do echo "Waiting for webhook."; sleep 2; done
+
+            echo "Deploying cluster issuer..."
+            
+            oc apply -f resources/00-gitops-clusterissuer.yaml
+            
+            while ! oc wait --for=jsonpath='{.status.conditions[0].status}'=True clusterissuer/selfsigned-issuer 2>/dev/null; do sleep 30; done
+
+            echo "Cluster Issuer is ready."
+        - name: VERSION
+          value: latest
+      runAfter:
+        - create-ibm-entitlement-key
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: common-services-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Creating common services namespace"
+
+            if [[ $(oc get projects | grep ibm-common-services | wc -l) -eq 0 ]]; then
+                oc create namespace ibm-common-services
+            fi 
+            
+            echo "Enabling common services catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/02-common-services-catalog-source.yaml
+            
+            echo "Waiting for common services catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/opencloud-operators -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Common services catalog source is ready"
+
+            echo "Installing common services operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/00-common-service-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment/ibm-common-service-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for common services operator to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Common services operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - cluster-issuer-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: cp4i-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling platform navigator catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/03-platform-navigator-catalog-source.yaml
+
+            echo "Waiting for platform navigator catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-integration-platform-navigator-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Platform navigator catalog source is ready"
+
+            echo "Installing platform navigator operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/01-platform-navigator-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-integration-platform-navigator-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for platform navigator operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Platform navigator operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - common-services-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: platform-navigator-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying platform navigator instance"
+
+            oc apply -f instances/$(params.CP4I_VERSION)/01-platform-navigator-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for platform navigator instance to be ready..."
+
+            while ! oc wait --for=condition=Ready
+            PlatformNavigator/cp4i-navigator -n
+            $(params.CP4I_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "Platform navigator instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - cp4i-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: asset-repository-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling asset reposiroty catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/04-asset-repo-catalog-source.yaml
+
+            echo "Waiting for asset repository catalog source to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-integration-asset-repository-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Asset repository catalog source is ready"
+
+            echo "Installing asset repository operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/02-asset-repo-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-integration-asset-repository-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for asset repository operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done            
+
+            echo "Asset repository operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - platform-navigator-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ASSET_REPOSITORY_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: asset-repository-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing asset repo instance manifest"
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/02-asset-repo-ai-instance.yaml ;) | \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > asset-repo-ai-instance.yaml
+
+            echo "Deploying asset repository instance"
+
+            oc apply -f asset-repo-ai-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for asset repository instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            AssetRepository/asset-repo-ai -n
+            $(params.CP4I_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Asset repository instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - asset-repository-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ASSET_REPOSITORY_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ASSET_REPO)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: datapower-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling datapower catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/05-datapower-catalog-source.yaml
+
+            echo "Waiting for datapower catalog source to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-datapower-operator-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Datapower catalog source is ready"
+
+            echo "Installing datapower operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/03-datapower-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment datapower-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for datapower operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Datapower operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - asset-repository-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: apic-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling apic catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/07-api-connect-catalog-source.yaml
+
+            echo "Waiting for apic catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-apiconnect-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "APIC catalog source is ready"
+
+            echo "Installing apic operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/04-api-connect-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-apiconnect -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for apic operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "APIC operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - datapower-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_API_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: apic-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing apic instance manifest"
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/04-apic-emm-hpa-test-billing-instance.yaml ;) | \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > apic-emm-hpa-test-billing-instance.yaml
+
+            echo "Deploying apic instance"
+
+            oc apply -f apic-emm-hpa-test-billing-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for apic instance to be ready..."
+
+            while ! oc wait --for=condition=Ready
+            APIConnectCluster/apim-demo -n
+            $(params.CP4I_NAMESPACE)  2>/dev/null; do sleep 300; done
+
+            echo "APIC instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - apic-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_API_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_API_CONNECT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: apic-instance-configuration
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws
+
+            echo "Configuring apic instance"
+
+            ./apic --accept-license --live-help=false
+
+            echo "Setting apic variables"
+
+            APIC_INST_NAME='apim-demo'
+
+            MAILTRAP_HOST='mailpit-smtp.mailpit.svc.cluster.local'
+
+            MAILTRAP_PORT=1025
+
+            ADMINUSER_EMAIL='admin@cp4i.demo.net'
+
+            APIC_REALM='admin/default-idp-1'
+
+            APIC_ADMIN_USER='admin'
+
+            APIC_ADMIN_ORG='admin'
+
+            APIC_MAILSERVER_NAME='dummy-mail-server'
+
+            APIC_CMC_USER='integration-admin'
+    
+            APIC_USER_REGISTRY='integration-keycloak'
+
+            APIC_AVAILABILITY_ZONE='availability-zone-default'
+
+            APIC_MGMT_SERVER=$(oc get route "${APIC_INST_NAME}-mgmt-platform-api" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.spec.host}")
+
+            APIC_ADMIN_PWD=$(oc get secret "${APIC_INST_NAME}-mgmt-admin-pass" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.password}"| base64 -d)
+
+            echo "Login to APIC with CMC Admin User..."
+
+            ./apic client-creds:clear
+
+            ./apic login --server $APIC_MGMT_SERVER --realm $APIC_REALM -u $APIC_ADMIN_USER -p $APIC_ADMIN_PWD
+
+            echo "Enabling API Key multiple time usage..."
+
+            ./apic cloud-settings:update --server $APIC_MGMT_SERVER cp4i-deployer-helper/templates/template-apic-cloud-settings.yaml
+
+            echo "Getting Mail Server Info..."
+
+            ./apic mail-servers:get --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json $APIC_MAILSERVER_NAME
+            
+            echo "Updating Mail Server Info..."
+            
+            jq --arg MAILTRAP_HOST $MAILTRAP_HOST \
+                --argjson MAILTRAP_PORT $MAILTRAP_PORT \
+                '.host=$MAILTRAP_HOST |
+                .port=$MAILTRAP_PORT |
+                del(.credentials, .created_at, .updated_at)' \
+                "${APIC_MAILSERVER_NAME}.json"  > "${APIC_MAILSERVER_NAME}-updated.json"
+            
+            echo "Updating Mail Server..."
+            
+            ./apic mail-servers:update --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG $APIC_MAILSERVER_NAME "${APIC_MAILSERVER_NAME}-updated.json"
+            
+            echo "Getting CMC Admin User Info..."
+            
+            ./apic users:get --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --user-registry $APIC_USER_REGISTRY --format json $APIC_CMC_USER
+            
+            echo "Updating CMC Admin User eMail Info..."
+            
+            jq --arg ADMINUSER_EMAIL $ADMINUSER_EMAIL \
+                '.email=$ADMINUSER_EMAIL | 
+                del(.created_at, .updated_at, .last_login_at)' \
+                "${APIC_CMC_USER}.json" > "${APIC_CMC_USER}-updated.json"
+            
+            echo "Updating CMC Admin User..."
+            
+            ./apic users:update --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --user-registry $APIC_USER_REGISTRY $APIC_CMC_USER "${APIC_CMC_USER}-updated.json"
+
+            PORG_NAME='cp4i-demo-org'
+
+            PORG_TITLE='CP4I Demo Provider Org'
+
+            PORG=$(./apic orgs:list --server $APIC_MGMT_SERVER | awk -v porgname=$PORG_NAME '$1 == porgname { ++count } END { print count }')
+
+            if [[ -z $PORG ]]; then
+                echo "Getting Values to Create Provider Organization..."
+                USER_URL=$(./apic users:list --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --user-registry $APIC_USER_REGISTRY | awk -v user=$APIC_CMC_USER '$1 == user {print $4}')
+                echo "Preparing POrg File for user " $APIC_CMC_USER
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-apic-provider-org.json ;) | \
+                  PORG_NAME=${PORG_NAME} \
+                  PORG_TITLE=${PORG_TITLE} \
+                  USER_URL=${USER_URL} \
+                  sh > provider-org.json
+                echo "Creating PORG for user " $APIC_CMC_USER
+                ./apic orgs:create --server $APIC_MGMT_SERVER provider-org.json
+                echo "Provider Organization has been created."
+            else
+                echo "Provider Organization already existed."
+            fi
+
+            if [[ "$(params.EA_WATSONX)" == "true" ]]; then
+                echo "Configure API Gateway to interact with WatsonX from Event Automation"
+                oc apply -f cp4i-deployer-helper/resources/13e-apic-dp-gw-self-signed-issuer.yaml
+                APIC_HOST=$(oc get route ${APIC_INST_NAME}-gw-gateway -n $(params.CP4I_NAMESPACE) -o jsonpath='{.spec.host}')
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-apic-cert-ea-watsonx.yaml ;) | \
+                  APIC_HOST=${APIC_HOST} \
+                  sh > apic-cert-ea-watsonx.yaml
+                oc apply -f apic-cert-ea-watsonx.yaml
+                while ! oc get secret apic-gateway-tls -n $(params.CP4I_NAMESPACE) 2>/dev/null; do echo "Waiting for secret."; sleep 2; done
+                oc extract secret/apic-gateway-tls -n $(params.CP4I_NAMESPACE) --keys=tls.crt
+                oc extract secret/apic-gateway-tls -n $(params.CP4I_NAMESPACE) --keys=tls.key
+                cat tls.crt tls.key > tls-combined.pem
+                APIC_CERT=$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' tls-combined.pem)
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-ea-watsonx-apic-keystore.json ;) | \
+                  APIC_INST_NAME=${APIC_INST_NAME} \
+                  APIC_CERT=${APIC_CERT} \
+                  sh > ea-watsonx-apic-keystore.json
+                KEYS_LIST=$(./apic keystores:list --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '$1 == "ea-watsonx-keystore" { ++count } END { print count }')
+                if [[ -z $KEYS_LIST ]]; then 
+                    echo "Creating KeyStore for API Gateway Service with WatsonX..."
+                    ./apic keystores:create --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json ea-watsonx-apic-keystore.json    
+                else
+                    echo "KeyStore for API Gateway Service already exists."
+                fi
+                KEYSTORE_URL=$(./apic keystores:get ea-watsonx-keystore --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '{print$3}')
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-ea-watsonx-tls-server-profile.json ;) | \
+                  KEYSTORE_URL=${KEYSTORE_URL} \
+                  sh > ea-watsonx-tls-server-profile.json
+                TLS_SP_LIST=$(./apic tls-server-profiles:list-all --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '$1 == "ea-watsonx-tls-server-profile:1.0.0" { ++count } END { print count }')
+                if [[ -z $TLS_SP_LIST ]]; then 
+                    echo "Creating TLS Server Profile for WatsonX..."
+                    ./apic tls-server-profiles:create --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json ea-watsonx-tls-server-profile.json
+                else
+                    echo "TLS Server Profile for WatsonX already exists."
+                fi  
+                TLS_SERVER_PROFILE_URL=$(./apic tls-server-profiles:get --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json ea-watsonx-tls-server-profile:1.0.0 | awk '{print$3}') 
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-apic-api-gateway-settings.json ;) | \
+                  TLS_SERVER_PROFILE_URL=${TLS_SERVER_PROFILE_URL} \
+                  sh > apic-api-gateway-settings.json
+                ./apic gateway-services:update --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --availability-zone $APIC_AVAILABILITY_ZONE api-gateway-service apic-api-gateway-settings.json
+                rm -f tls.crt
+                rm -f tls.key
+            else
+                echo "Skipping API Gateway configuration for WatsonX."
+            fi
+
+            echo "APIC instance is configured"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - apic-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_API_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_API_CONNECT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-streams-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling event streams catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/08-event-streams-catalog-source.yaml
+
+            echo "Waiting for event streams catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-eventstreams-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Event streams catalog source is ready"
+
+            echo "Installing event streams operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/05-event-streams-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment eventstreams-cluster-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for event streams operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Event Streams operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - apic-instance-configuration
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-streams-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing event streams instance manifest"
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/05-event-streams-instance.yaml ;) | \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > event-streams-instance.yaml
+
+            echo "Deploying event streams instance"
+
+            oc apply -f event-streams-instance.yaml -n
+            $(params.ES_NAMESPACE)
+
+            echo "Waiting for event streams instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            EventStreams/es-demo -n
+            $(params.ES_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Event streams instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-streams-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_STREAMS)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling event endpoint management catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/13-eem-catalog-source.yaml
+
+            echo "Waiting for event endpoint management catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-eventendpointmanagement-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Event endpoint management catalog source is ready"
+
+            echo "Installing event endpoint managenent operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/09-eem-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-eem-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for event endpoint management operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Event endpoint management operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-streams-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing eem manager instance manifest"
+
+            cp instances/$(params.CP4I_VERSION)/19-eem-manager-local-instance.yaml .
+
+            if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                EEM_AUTH_TYPE='INTEGRATION_KEYCLOAK'
+                yq -i '.spec.manager.template.pod.spec.containers[0].env[1].name = "EI_AUTH_OAUTH2_ADDITIONAL_SCOPES" | 
+                    .spec.manager.template.pod.spec.containers[0].env[1].value = "email,profile,offline_access" | 
+                    .spec.manager.template.pod.spec.containers[0].env[1].value style="single"' 19-eem-manager-local-instance.yaml
+            else
+                EEM_AUTH_TYPE='LOCAL'
+            fi
+
+            (echo "cat <<EOF" ; cat 19-eem-manager-local-instance.yaml ;) | \
+              EEM_AUTH_TYPE=${EEM_AUTH_TYPE} \
+              OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+              sh > eem-manager-local-instance.yaml
+
+            echo "Deploying eem manager instance"
+
+            oc apply -f eem-manager-local-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for eem manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            eventendpointmanagement/eem-demo-mgr -n
+            $(params.CP4I_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "EEM manager instance is ready"
+
+            EEM_GATEWAY_ROUTE=$(oc get route "eem-demo-mgr-ibm-eem-gateway" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.spec.host}")
+
+            echo "Deploying eem gateway instance"
+
+            ( echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/20-eem-gateway-instance.yaml ;) | \
+                EEM_GATEWAY_ROUTE=${EEM_GATEWAY_ROUTE} \
+                sh > eem-gateway-instance.yaml
+
+            oc apply -f eem-gateway-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for eem gateway instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            eventgateway/eem-demo-gw -n
+            $(params.CP4I_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "EEM gateway instance is ready"
+
+            echo "EEM instance is ready"
+
+            echo "WTF!!!"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-instance-sec-config
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                echo "Configuring EEM instance with KeyCloak (aka OIDC)."
+                oc patch IntegrationKeycloakClient eem-demo-mgr-ibm-eem-keycloak -n $(params.CP4I_NAMESPACE) --patch '{"spec":{"client":{"optionalClientScopes":["offline_access"]}}}' --type=merge
+            else
+                echo "Configuring EEM instance with Local Authentication."    
+                EEM_ADMIN_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
+                EEM_USER_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
+                echo "Updating EEM User Credentials."
+                (echo "cat <<EOF" ; cat templates/template-eem-user-credentials.json ;) | \
+                  EEM_ADMIN_PWD=${EEM_ADMIN_PWD} \
+                  EEM_USER_PWD=${EEM_USER_PWD} \
+                  sh > eem-user-credentials.json
+                SECRET_DATA_BASE64=$(base64 -w 0 -i eem-user-credentials.json)
+                oc patch secret eem-demo-mgr-ibm-eem-user-credentials -n $(params.CP4I_NAMESPACE) --patch '{"data":{"user-credentials.json":"'$SECRET_DATA_BASE64'"}}' --type=merge
+                echo "Updating EEM User Roles."
+                SECRET_DATA_BASE64=$(base64 -w 0 -i resources/10-eem-user-roles.json)
+                oc patch secret eem-demo-mgr-ibm-eem-user-roles -n $(params.CP4I_NAMESPACE) --patch '{"data":{"user-mapping.json":"'$SECRET_DATA_BASE64'"}}' --type=merge
+            fi
+
+            echo "EEM instance is configured"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-integration-es
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ "$(params.DEPLOY_EVENT_STREAMS)" == "true" ]]; then
+                if [[ "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)" == "true" ]]; then
+                    echo "Event streams instance available for configuration."
+                else
+                    echo "Skipping event endpoint management instance configuration."
+                    echo "Event streams operator was not installed."
+                    exit 0
+                fi
+            else
+                echo "Skipping event endpoint management instance configuration."
+                echo "Event streams instance was not deployed"
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Event Endpoint Manager Configuration..."
+
+            EEM_INST_NAME='eem-demo-mgr'
+
+            ES_INST_NAME='es-demo'
+
+            oc extract secret/${EEM_INST_NAME}-ibm-eem-manager -n $(params.CP4I_NAMESPACE) --keys=ca.crt
+
+            EEM_CERTIFICATE=$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' ca.crt)
+
+            EEM_API_HOST=$(oc get route ${EEM_INST_NAME}-ibm-eem-admin -n $(params.CP4I_NAMESPACE) -o jsonpath={.spec.host})
+
+            EEM_UI_URL=$(oc get route ${EEM_INST_NAME}-ibm-eem-manager -n $(params.CP4I_NAMESPACE) -o jsonpath={.spec.host})
+
+            ( echo "cat <<EOF" ; cat templates/template-es-kafka-eem-configmap.yaml ;) | \
+                ES_INST_NAME=${ES_INST_NAME} \
+                ES_NAMESPACE=$(params.ES_NAMESPACE) \
+                EEM_INST_NAME=${EEM_INST_NAME} \
+                EEM_API_HOST=${EEM_API_HOST} \
+                EEM_CERTIFICATE=${EEM_CERTIFICATE} \
+                EEM_UI_URL=${EEM_UI_URL} \
+                sh > es-kafka-eem-configmap.yaml
+
+            oc apply -f es-kafka-eem-configmap.yaml
+
+            rm -f ca.crt
+
+            echo "Event Endpoint Manager has been configured."
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-instance-sec-config
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-integration-apic-step1
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ "$(params.DEPLOY_API_CONNECT)" == "true" ]]; then
+                if [[ "$(params.DEPLOY_API_CONNECT_OPERATOR)" == "true" ]]; then
+                    echo "API Connect instance available for configuration"
+                else
+                    echo "Skipping event endpoint management instance configuration."
+                    echo "API Connect operator was not installed."
+                    exit 0
+                fi
+            else
+                echo "Skipping event endpoint management instance configuration."
+                echo "API Connect instance was not deployed"
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws
+
+            ./apic --accept-license --live-help=false
+
+            APIC_INST_NAME='apim-demo'
+
+            APIC_REALM='admin/default-idp-1'
+
+            APIC_ADMIN_USER='admin'
+
+            APIC_ADMIN_ORG='admin'
+
+            APIC_JWKS_URL=$(oc get apiconnectcluster $APIC_INST_NAME -n $(params.CP4I_NAMESPACE) -ojsonpath='{.status.endpoints[?(@.name=="jwksUrl")].uri}')
+
+            APIC_PLATFORM_API=$(oc get apiconnectcluster $APIC_INST_NAME -n $(params.CP4I_NAMESPACE) -ojsonpath='{.status.endpoints[?(@.name=="platformApi")].uri}' | cut -b 9- | cut -d/ -f1)
+
+            echo -n | openssl s_client -connect $APIC_PLATFORM_API:443 -servername $APIC_PLATFORM_API -showcerts | openssl x509 > ${APIC_INST_NAME}-platform-api.pem
+
+            if [[ $(oc get secrets -n $(params.CP4I_NAMESPACE) | grep ${APIC_INST_NAME}-cpd | wc -l) -eq 0 ]]; then
+                echo "Creating Secret for EEM Gateway Service..."
+                oc create secret generic ${APIC_INST_NAME}-cpd --from-file=ca.crt=./${APIC_INST_NAME}-platform-api.pem -n $(params.CP4I_NAMESPACE)
+            else    
+                echo "Secret for EEM Gateway Service already exists."
+            fi 
+
+            oc get EventEndpointManagement eem-demo-mgr -n $(params.CP4I_NAMESPACE) -o json \
+              | jq --arg APIC_INST_NAME $APIC_INST_NAME \
+                  --arg APIC_JWKS_URL $APIC_JWKS_URL \
+              '.spec.manager.apic.jwks += {"endpoint": ($APIC_JWKS_URL)} | 
+              .spec.manager.apic += {"clientSubjectDN":"CN=ingress-ca"} | 
+              .spec.manager.tls += {"trustedCertificates":[{"certificate":"ca.crt","secretName":($APIC_INST_NAME + "-cpd")}]}' \
+              | oc apply -f -
+
+            oc get secret ${APIC_INST_NAME}-ingress-ca -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.ca\.crt}" | base64 -d > ${APIC_INST_NAME}-ca.pem
+
+            oc get secret ${APIC_INST_NAME}-ingress-ca -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.tls\.crt}" | base64 -d > ${APIC_INST_NAME}-tls-crt.pem
+
+            oc get secret ${APIC_INST_NAME}-ingress-ca -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.tls\.key}" | base64 -d > ${APIC_INST_NAME}-tls-key.pem
+
+            APIC_MGMT_SERVER=$(oc get route "${APIC_INST_NAME}-mgmt-platform-api" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.spec.host}")
+
+            APIC_ADMIN_PWD=$(oc get secret "${APIC_INST_NAME}-mgmt-admin-pass" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.password}"| base64 -d)
+
+            echo "Login to APIC with CMC Admin User..."
+
+            ./apic client-creds:clear
+
+            ./apic login --server $APIC_MGMT_SERVER --realm $APIC_REALM -u $APIC_ADMIN_USER -p $APIC_ADMIN_PWD
+
+            cat $APIC_INST_NAME-tls-crt.pem $APIC_INST_NAME-tls-key.pem > $APIC_INST_NAME-tls-combined.pem
+
+            APIC_CERT=$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' $APIC_INST_NAME-tls-combined.pem)
+
+            ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-eem-apic-keystore.json ;) | \
+                APIC_INST_NAME=${APIC_INST_NAME} \
+                APIC_CERT=${APIC_CERT} \
+                sh > eem-apic-keystore.json
+
+            KEYS_LIST=$(./apic keystores:list --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '$1 == "eem-keystore" { ++count } END { print count }')
+
+            if [[ -z $KEYS_LIST ]]; then 
+                echo "Creating KeyStore for EEM Gateway Service..."
+                ./apic keystores:create --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json eem-apic-keystore.json
+            else
+                echo "KeyStore for EEM Gateway Service already exists."            
+            fi
+
+            APIC_CERT=$(awk 'NF {sub(/\r/, ""); printf "%s\\n",$0;}' $APIC_INST_NAME-ca.pem)
+
+            ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-eem-apic-truststore.json ;) | \
+                APIC_INST_NAME=${APIC_INST_NAME} \
+                APIC_CERT=${APIC_CERT} \
+                sh > eem-apic-truststore.json
+
+            KEYS_LIST=$(./apic truststores:list --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '$1 == "eem-truststore" { ++count } END { print count }')
+
+            if [[ -z $KEYS_LIST ]]; then 
+                echo "Creating TrustStore for EEM Gateway Service..."
+                ./apic truststores:create --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json eem-apic-truststore.json
+            else            
+                echo "TrustStore for EEM Gateway Service already exists."
+            fi
+            
+            KEYSTORE_URL=$(./apic keystores:get eem-keystore --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '{print$3}')
+
+            TRUSTSTORE_URL=$(./apic truststores:get eem-truststore --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '{print$3}')
+
+            ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-eem-apic-tls-client-profile.json ;) | \
+                KEYSTORE_URL=${KEYSTORE_URL} \
+                TRUSTSTORE_URL=${TRUSTSTORE_URL} \
+                sh > eem-apic-tls-client-profile.json
+
+            TLSCPS_LIST=$(./apic tls-client-profiles:list-all --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | awk '$1 == "eem-tls-client-profile:1.0.0" { ++count } END { print count }')
+            
+            if [[ -z $TLSCPS_LIST ]]; then 
+                echo "Creating TLS Client Profile for EEM Gateway Service..."
+                ./apic tls-client-profiles:create --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --format json eem-apic-tls-client-profile.json
+            else
+                echo "TLS Client Profile for EEM Gateway Service already exists."
+            fi
+
+            echo "Event Endpoint Manager has been registered with APIC"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-integration-es
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.EEM_APIC_INT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: mq-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling mq catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/09-mq-catalog-source.yaml
+
+            echo "Waiting for mq catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibmmq-operator-catalogsource -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "MQ catalog source is ready"
+
+            echo "Installing mq operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/06-mq-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for mq operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "MQ operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-integration-apic-step1
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_MQ_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: qmgr-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preconfiguring Queue Manager..."
+
+            echo "Preparing queue manager instance manifest"
+
+            case "$(params.CP4I_VERSION)" in
+
+                "16.1.0")
+            
+                    MQ_VERSION='9.4.0.7-r1'
+            
+                    ;;
+            
+                "16.1.1")
+            
+                    MQ_VERSION='9.4.1.1-r1'
+            
+            esac
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/12-qmgr-native-ha-instance.yaml ;) | \
+                MQ_VERSION=${MQ_VERSION} \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > qmgr-native-ha-instance.yaml
+
+            echo "Deploying queue manager instance"
+
+            oc apply -f qmgr-native-ha-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for queue manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/qmgr-native-ha -n
+            $(params.CP4I_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Queue manager instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - mq-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_MQ_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_QUEUE_MANAGER)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: app-connect-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling app connect catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/10-app-connect-catalog-source.yaml
+
+            echo "Waiting for app connect catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/appconnect-operator-catalogsource -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "App connect catalog source is ready"
+
+            echo "Installing app connect operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/07-app-connect-subscription.yaml 
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-appconnect-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for app connect operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "App connect operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - qmgr-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_APP_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: ace-dashboard-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing ace dashboard instance manifest"
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/06-ace-dashboard-instance.yaml ;) | \
+                OCP_FILE_STORAGE=$(params.OCP_FILE_STORAGE) \
+                sh > ace-dashboard-instance.yaml
+
+            echo "Deploying ace dashboard instance"
+
+            oc apply -f ace-dashboard-instance.yaml -n
+            $(params.ACE_NAMESPACE)
+
+            echo "Waiting for ace dashboard instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            dashboard/ace-dashboard -n
+            $(params.ACE_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "ACE dashboard instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - app-connect-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_APP_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ACE_DASHBOARD)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: ace-designer-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            if [[ "$(params.DEPLOY_ACE_SWITCH_SERVER)" == "true" ]]; then
+                echo "Deploying ace switch server instance"
+                oc apply -f instances/$(params.CP4I_VERSION)/07-ace-switch-server-instance.yaml -n $(params.ACE_NAMESPACE)
+                echo "Waiting for ace switch server instance to be ready..."
+                while ! oc wait --for=jsonpath='{.status.phase}'=Ready \
+                  switchserver/ace-switch-server -n \
+                  $(params.ACE_NAMESPACE) 2>/dev/null; do sleep 30; done
+              echo "ACE switch server instance is ready"
+            else            
+                echo "Skipping ACE switch server instance deployment"
+            fi
+
+            echo "Preparing ace designer instance manifest"
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/08-ace-designer-local-ai-instance.yaml ;) | \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                OCP_FILE_STORAGE=$(params.OCP_FILE_STORAGE) \
+                sh > ace-designer-local-ai-instance.yaml
+
+            echo "Deploying ace designer instance"
+
+            oc apply -f ace-designer-local-ai-instance.yaml -n
+            $(params.ACE_NAMESPACE)
+
+            echo "Waiting for ace designer instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            designerauthoring/ace-designer-ai -n
+            $(params.ACE_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "ACE designer instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - ace-dashboard-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_APP_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ACE_DESIGNER)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: ace-ir-instance-bake-hpa
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            oc apply -f instances/$(params.CP4I_VERSION)/19a-ace-is-aceivt-instance-bake.yaml -n
+            $(params.ACE_NAMESPACE)
+
+            echo "Waiting for Integration Server to be deployed..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            integrationruntimes/jgr-ace-bake-cp4i -n
+            $(params.ACE_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "Integration Server is deployed"
+
+            echo "Creating a new HPA rule for Integration Server instance"
+
+            oc apply -f resources/09b-ace-hpa-demo.yaml -n
+            $(params.ACE_NAMESPACE)
+
+            echo "HPA for Integration Server is defined."             
+        - name: VERSION
+          value: latest
+      runAfter:
+        - ace-designer-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_APP_CONNECT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ACE_INTEGRATION_SERVER)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: aspera-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling redis catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/11-redis-catalog-source.yaml
+
+            echo "Waiting for redis catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-cloud-databases-redis-operator-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Redis catalog source is ready"
+
+            echo "Enabling aspera catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/12-aspera-catalog-source.yaml
+
+            echo "Waiting for aspera catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/aspera-operators -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Aspera catalog source is ready"
+
+            echo "Installing aspera operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/08-aspera-hsts-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-aspera-hsts-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for aspera operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Aspera operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - ace-ir-instance-bake-hpa
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_ASPERA_HSTS_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-automation-truststore-configuration
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Configuring event automation truststore."
+
+            oc delete secret eventautomation-truststore -n $(params.CP4I_NAMESPACE) --ignore-not-found
+
+            if [[ "$(params.DEPLOY_EVENT_STREAMS)" != "true" ]] ||
+               [[ "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)" != "true" ]]; then
+                echo "Event Streams was not installed."
+                echo "Skipping Event Streams certificate processing."
+            else
+                ES_INST_NAME='es-demo'
+                echo "Preparing truststore with Event Streams certificate."
+                rm -f ca.crt
+                oc extract secret/${ES_INST_NAME}-cluster-ca-cert -n $(params.CP4I_NAMESPACE) --keys=ca.crt
+                echo "Adding Event Streams certificate to truststore."
+                keytool -importcert -noprompt -alias eventstreams -file ca.crt -trustcacerts -keystore eventautomation.jks -storepass "eventautomationstore"
+                ES_CERT='yes'
+                rm -f ca.crt
+            fi
+
+            if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)" != "true" ]] ||
+               [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)" != "true" ]]; then
+                echo "Event Endpoint Management was not installed."
+                echo "Skipping Event Endpoint Management certificate processing."
+            else
+                EEM_GW_INST_NAME='eem-demo-gw'
+                echo "Preparing truststore with Event Endpoint Management certificate."
+                oc extract secret/${EEM_GW_INST_NAME}-ibm-egw-cert -n $(params.CP4I_NAMESPACE) --keys=ca.crt
+                echo "Adding Event Gateway certificate..."
+                keytool -importcert -noprompt -alias eventendpointmanagement -file ca.crt -trustcacerts -keystore eventautomation.jks -storepass "eventautomationstore"
+                EEM_CERT='yes'
+                rm -f ca.crt
+            fi
+
+            if [[ "$(params.DEPLOY_API_CONNECT)" != "true" ]] ||
+               [[ "$(params.DEPLOY_API_CONNECT_OPERATOR)" != "true" ]] ||
+               [[ "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)" != "true" ]]; then
+                echo "API Connect was not installed."
+                echo "Skipping API Connect certificate processing."
+            else
+                echo "Preparing truststore with API Connect certificate."
+                oc extract secret/apic-gateway-tls -n $(params.CP4I_NAMESPACE) --keys=ca.crt
+                echo "Adding APIC certificate..."    
+                keytool -importcert -noprompt -alias apic -file ca.crt -trustcacerts -keystore eventautomation.jks -storepass "eventautomationstore"
+                APIC_CERT='yes'
+                rm -f ca.crt
+            fi
+
+            if [[ ! -z "$ES_CERT" ]] || [[ ! -z "$EEM_CERT" ]] || [[ ! -z "$APIC_CERT" ]]; then
+                echo "Creating Event Automation truststore."
+                oc create secret generic eventautomation-truststore -n $(params.CP4I_NAMESPACE) --from-file=eventautomation.jks=./eventautomation.jks
+            else
+                echo "Skipping Event Automation truststore creation."
+            fi
+
+            echo "TrustStore for Event Automation has been configured."
+        - name: VERSION
+          value: latest
+      runAfter:
+        - aspera-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: flink-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling flink catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/14-ea-flink-catalog-source.yaml
+
+            echo "Waiting for flink catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-eventautomation-flink-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Flink catalog source is ready"
+
+            echo "Installing flink operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/10-ea-flink-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment flink-kubernetes-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for flink operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Flink operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-automation-truststore-configuration
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: flink-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying flink instance"
+
+            cp instances/$(params.CP4I_VERSION)/21-ea-flink-instance.yaml .
+
+            if [[ "$(params.DEPLOY_EVENT_STREAMS)" != "true" ]] ||
+               [[ "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)" != "true" ]]; then
+                if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)" != "true" ]] ||
+                   [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)" != "true" ]]; then
+                    if [[ "$(params.DEPLOY_API_CONNECT)" != "true" ]] ||
+                       [[ "$(params.DEPLOY_API_CONNECT_OPERATOR)" != "true" ]] ||
+                       [[ "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)" != "true" ]]; then
+                        echo "Updating Flink instance manifest."
+                        yq -i 'del(.spec.flinkConfiguration."env.java.opts.jobmanager", 
+                            .spec.flinkConfiguration."env.java.opts.taskmanager", 
+                            .spec.podTemplate.spec.containers[0].volumeMounts[1], 
+                            .spec.podTemplate.spec.volumes[1])' 21-ea-flink-instance.yaml
+                    else
+                        echo "API Connect is available."
+                    fi
+                else
+                    echo "Event EndPoint Management is available."
+                fi
+            else
+                echo "Event Streams is available."    
+            fi
+
+            oc apply -f 21-ea-flink-instance.yaml -n $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for flink instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.jobManagerDeploymentStatus}'=READY
+            flinkdeployment/ea-flink-demo -n
+            $(params.CP4I_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Flink instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - flink-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-processing-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling event processing catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/15-event-processing-catalog-source.yaml
+
+            echo "Waiting for event processing catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-eventprocessing-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "Event processing catalog source is ready"
+
+            echo "Installing event processing operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/11-event-processing-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment ibm-ep-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for event processing operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME 2>/dev/null; do sleep 30; done
+
+            echo "Event processing operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - flink-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-processing-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preparing event processing instance manifest"
+
+            cp instances/$(params.CP4I_VERSION)/22-event-processing-instance.yaml .
+            
+            if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                EP_AUTH_TYPE='OIDC'
+                yq -i '.spec.authoring.authConfig.oidcConfig.authorizationClaimPointer = "/effectiveRoles" |
+                    .spec.authoring.authConfig.oidcConfig.clientIDKey = "CLIENT_ID" |
+                    .spec.authoring.authConfig.oidcConfig.clientSecretKey = "CLIENT_SECRET" |
+                    .spec.authoring.authConfig.oidcConfig.discovery = true |
+                    .spec.authoring.authConfig.oidcConfig.secretName = "keycloak-client-secret-ep-demo-ibm-ep-keycloak" |
+                    .spec.authoring.authConfig.oidcConfig.site = "https://cpfs-opcon-cs-keycloak-service.ibm-common-services.svc:8443/realms/cloudpak/" | 
+                    .spec.authoring.authConfig.oidcConfig.site style="single" |
+                    .spec.authoring.tls.trustedCertificates[0].certificate = "ca.crt" |
+                    .spec.authoring.tls.trustedCertificates[0].secretName = "keycloak-bindinfo-cs-keycloak-tls-secret" | 
+                    .spec.authoring.template.pod.spec.containers[0].env[1].name = "EI_AUTH_VALIDATE_DISCOVERY_ISSUER" | 
+                    .spec.authoring.template.pod.spec.containers[0].env[1].value = "false" | 
+                    .spec.authoring.template.pod.spec.containers[0].env[1].value style="single"' 22-event-processing-instance.yaml              
+                echo "Preparing OIDC secret manifest..."
+                OCP_FQDN=$(oc get dnses.config.openshift.io cluster -o jsonpath='{.spec.baseDomain}')
+                CP4I_KC_CLIENT_ID=$(oc get integrationkeycloakclient -n ibm-common-services | grep integration | awk '{print $1}')
+                ( echo "cat <<EOF" ; cat templates/template-ep-keycloak-client.yaml ;) | \
+                    OCP_FQDN=${OCP_FQDN} \
+                    CP4I_KC_CLIENT_ID=${CP4I_KC_CLIENT_ID} \
+                    sh > ep-keycloak-client.yaml
+                echo "Creating Keycloak Client..."
+                oc apply -f ep-keycloak-client.yaml
+                echo "EP Keycloak client created."
+            else
+                EP_AUTH_TYPE='LOCAL'               
+            fi
+
+            if [[ "$(params.DEPLOY_EVENT_STREAMS)" != "true" ]] ||
+               [[ "$(params.DEPLOY_EVENT_STREAMS_OPERATOR)" != "true" ]]; then
+                if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)" != "true" ]] ||
+                   [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)" != "true" ]]; then
+                    if [[ "$(params.DEPLOY_API_CONNECT)" != "true" ]] ||
+                       [[ "$(params.DEPLOY_API_CONNECT_OPERATOR)" != "true" ]] ||
+                       [[ "$(params.DEPLOY_DATAPOWER_GATEWAY_OPERATOR)" != "true" ]]; then
+                        echo "Updating Event Processing instance manifest."
+                        if [[ $(yq '.spec.authoring.template.pod.spec.containers[0].env | length' 22-event-processing-instance.yaml) -eq 1 ]]; then
+                            yq -i 'del(.spec.authoring.template)' 22-event-processing-instance.yaml
+                        else
+                            yq -i 'del(.spec.authoring.template.pod.spec.volumes, 
+                                        .spec.authoring.template.pod.spec.containers[0].env[0], 
+                                        .spec.authoring.template.pod.spec.containers[0].volumeMounts)' 22-event-processing-instance.yaml
+                        fi
+                    else
+                        echo "API Connect is available."
+                    fi
+                else
+                    echo "Event EndPoint Management is available."
+                fi
+            else
+                echo "Event Streams is available."    
+            fi
+
+            (echo "cat <<EOF" ; cat 22-event-processing-instance.yaml ;) | \
+                EP_AUTH_TYPE=${EP_AUTH_TYPE} \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > event-processing-instance.yaml
+
+            echo "Deploying event processing instance"
+
+            oc apply -f event-processing-instance.yaml -n
+            $(params.CP4I_NAMESPACE)
+
+            echo "Waiting for event processing instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            EventProcessing/ep-demo -n
+            $(params.CP4I_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "Event processing instance has been deployed"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-processing-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: event-processing-instance-sec-config
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+            
+            if [[ "$(params.EA_OIDC)" == "true" ]]; then
+                echo "Configuring EP instance with OIDC Authentication."
+                SECRET_DATA_BASE64=$(base64 -i resources/11-ep-user-roles-oidc.json | tr -d '\n')
+                oc patch secret ep-demo-ibm-ep-user-roles -n $(params.CP4I_NAMESPACE) --patch '{"data":{"user-mapping.json":"'$SECRET_DATA_BASE64'"}}' --type=merge            
+            else
+                echo "Configuring EP instance with Local Authentication."
+                EP_ADMIN_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
+                echo "Updating EP User Credentials."
+                (echo "cat <<EOF" ; cat templates/template-ep-user-credentials.json ;) | \
+                    EP_ADMIN_PWD=${EP_ADMIN_PWD} \
+                    sh > ep-user-credentials.json
+                SECRET_DATA_BASE64=$(base64 -w 0 -i ep-user-credentials.json)
+                oc patch secret ep-demo-ibm-ep-user-credentials -n $(params.CP4I_NAMESPACE) --patch '{"data":{"user-credentials.json":"'$SECRET_DATA_BASE64'"}}' --type=merge
+                SECRET_DATA_BASE64=$(base64 -w 0 -i resources/11-ep-user-roles.json)
+                oc patch secret ep-demo-ibm-ep-user-roles -n $(params.CP4I_NAMESPACE) --patch '{"data":{"user-mapping.json":"'$SECRET_DATA_BASE64'"}}' --type=merge
+            fi
+                
+            echo "Event processing instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-processing-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_FLINK)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_PROCESSING)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: postgresql-operator-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Creating namespace"
+
+            oc create namespace pgsql
+
+            echo "Enabling Operator Group in namespace"
+
+            oc apply -f resources/12d-pgsql-operatorgroup.yaml
+
+            echo "Installing postgresql operator"
+            
+            oc apply -f resources/12a-pgsql-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment pgo -n pgsql --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for postgresql operator to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME -n pgsql 2>/dev/null; do sleep 30; done
+
+            echo "Postgresql operator is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - event-processing-instance-sec-config
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_POSTGRESQL_OPERATOR)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: postgresql-database-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Creating config map with postgresql database configuration"
+
+            oc apply -f resources/12b-pgsql-config.yaml -n pgsql
+
+            echo "Config map is created"
+
+            echo "Deploying postgresql database instance"
+
+            oc apply -f resources/12c-pgsql-db.yaml -n pgsql
+
+            echo "Waiting for postgresql database instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.conditions[1].status}'=True
+            -l "postgres-operator.crunchydata.com/role=master" pods -n
+            pgsql 2>/dev/null; do sleep 30; done
+
+            echo "Postgresql database instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - postgresql-operator-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_POSTGRESQL_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EA_POSTGRESQL)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: eem-integration-apic-step2
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ "$(params.DEPLOY_API_CONNECT)" == "true" ]]; then
+                if [[ "$(params.DEPLOY_API_CONNECT_OPERATOR)" == "true" ]]; then
+                    echo "API Connect instance available for configuration"
+                else
+                    echo "Skipping event endpoint management instance configuration."
+                    echo "API Connect operator was not installed."
+                    exit 0
+                fi
+            else
+                echo "Skipping event endpoint management instance configuration."
+                echo "API Connect instance was not deployed"
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws
+
+            ./apic --accept-license --live-help=false
+
+            APIC_INST_NAME='apim-demo'
+
+            APIC_REALM='admin/default-idp-1'
+
+            APIC_ADMIN_USER='admin'
+
+            APIC_ADMIN_ORG='admin'
+
+            APIC_AVAILABILITY_ZONE='availability-zone-default'
+
+            EEM_MANAGER_INST_NAME='eem-demo-mgr'
+
+            EEM_GATEWAY_INST_NAME='eem-demo-gw'
+
+            APIC_MGMT_SERVER=$(oc get route "${APIC_INST_NAME}-mgmt-platform-api" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.spec.host}")
+
+            APIC_ADMIN_PWD=$(oc get secret "${APIC_INST_NAME}-mgmt-admin-pass" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.data.password}"| base64 -d)
+
+            echo "Login to APIC with CMC Admin User..."
+
+            ./apic client-creds:clear
+
+            ./apic login --server $APIC_MGMT_SERVER --realm $APIC_REALM -u $APIC_ADMIN_USER -p $APIC_ADMIN_PWD
+
+            echo "Registering the event gateway..."
+
+            EEM_MANAGER_APIC_HOST=$(oc get route $EEM_MANAGER_INST_NAME-ibm-eem-apic -n $(params.CP4I_NAMESPACE) --template='{{ .spec.host }}')
+
+            EEM_GATEWAY_RT_HOST=$(oc get route $EEM_GATEWAY_INST_NAME-ibm-egw-rt -n $(params.CP4I_NAMESPACE) --template='{{ .spec.host }}')
+
+            APIC_INST_NAME_TLS_CLIENT_PROFILE_URL=$(./apic tls-client-profiles:list-all --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG  | grep eem-tls-client-profile | awk '{print$2}')
+
+            DEFAULT_TLS_SERVER_PROFILE_URL=$(./apic tls-server-profiles:list-all --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG | grep tls-server-profile-default | awk '{print$2}')
+
+            echo "Getting event-gateway service integration_url..."
+
+            INTEGRATION_URL=$(./apic integrations:get event-gateway --subcollection gateway-service --server $APIC_MGMT_SERVER --format json --fields url | awk '{print$3}')
+
+            ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-eem-apic-event-gateway.json ;) | \
+                EEM_MANAGER_APIC_HOST=${EEM_MANAGER_APIC_HOST} \
+                EEM_GATEWAY_RT_HOST=${EEM_GATEWAY_RT_HOST} \
+                APIC_INST_NAME_TLS_CLIENT_PROFILE_URL=${APIC_INST_NAME_TLS_CLIENT_PROFILE_URL} \
+                DEFAULT_TLS_SERVER_PROFILE_URL=${DEFAULT_TLS_SERVER_PROFILE_URL} \
+                INTEGRATION_URL=${INTEGRATION_URL} \
+                sh > eem-apic-event-gateway.json
+
+            GTWYSVCS_LIST=$(./apic gateway-services:list --server $APIC_MGMT_SERVER --org $APIC_ADMIN_ORG --availability-zone $APIC_AVAILABILITY_ZONE | awk '$1 == "eem-gateway-service" { ++count } END { print count }')
+            
+            if [[ -z $GTWYSVCS_LIST ]]; then 
+                echo "Creating Gateway Service for EEM..."
+                ./apic gateway-services:create --server $APIC_MGMT_SERVER --availability-zone $APIC_AVAILABILITY_ZONE --org $APIC_ADMIN_ORG --format json eem-apic-event-gateway.json
+            else
+                echo "Gateway Service for EEM already exists."
+            fi
+
+            echo "EEM Gateway is configured"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - postgresql-database-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.EEM_APIC_INT)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_PLATFORM_UI)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: license-service-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling license service catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/02a-license-service-catalog-source.yaml
+
+            echo "Waiting for license service catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-licensing-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "License service catalog source is ready"
+
+            echo "Creating license service namespace"
+
+            if [[ $(oc get projects | grep ibm-licensing | wc -l) -eq 0 ]]; then
+                oc create namespace ibm-licensing
+            fi 
+            
+            echo "Enable operator group in namespace"
+
+            oc apply -f resources/00-license-service-operatorgroup.yaml
+
+            echo "Installing license service operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/00-license-service-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment/ibm-licensing-operator -n ibm-licensing --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for license service operator to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME -n ibm-licensing 2>/dev/null; do sleep 30; done
+
+            echo "License service operator is ready"
+
+            echo "Waiting for license service instance to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.licensingPods[0].conditions[1].status}'=True 
+            IBMLicensing/instance -n ibm-licensing 2>/dev/null; do sleep 30; done
+
+            echo "License service instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - eem-integration-apic-step2
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_LICENSE_SERVICE)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: license-reporter-installation
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Enabling license reporter catalog source"
+
+            oc apply -f catalog-sources/$(params.CP4I_VERSION)/02b-license-reporter-catalog-source.yaml
+
+            echo "Waiting for license reporter catalog source to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.connectionState.lastObservedState}'=READY
+            catalogsources/ibm-license-service-reporter-operator-catalog -n 
+            openshift-marketplace 2>/dev/null; do sleep 30; done
+
+            echo "License reporter catalog source is ready"
+
+            echo "Installing license reporter operator"
+            
+            oc apply -f subscriptions/$(params.CP4I_VERSION)/00-license-reporter-subscription.yaml
+
+            echo "Getting operator version..."
+            
+            SUB_NAME=''
+            
+            while [ -z "$SUB_NAME" ]; do sleep 5; SUB_NAME=$(oc get deployment/ibm-license-service-reporter-operator -n ibm-licensing --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}'); done
+
+            echo "Operator: " $SUB_NAME
+
+            echo "Waiting for license reporter operator to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.phase}'=Succeeded 
+            csv/$SUB_NAME -n ibm-licensing 2>/dev/null; do sleep 30; done
+
+            echo "License reporter operator is ready"
+
+            echo "Preparing license reporter instance manifest..."
+
+            (echo "cat <<EOF" ; cat instances/$(params.CP4I_VERSION)/00-license-reporter-instance.yaml ;) | \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > license-reporter-instance.yaml
+
+            echo "Deploying license reporter instance..."
+
+            oc apply -f license-reporter-instance.yaml
+
+            echo "Waiting for license reporter instance to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.LicenseServiceReporterPods[0].conditions[1].status}'=True 
+            IBMLicenseServiceReporter/ibm-lsr-instance -n ibm-licensing 2>/dev/null; do sleep 30; done
+
+            echo "License reporter instance is ready"
+
+            echo "Configuting data source for license reporter..."
+
+            REPORTER_URL="https://"$(oc get route ibm-license-service-reporter -n ibm-licensing -o jsonpath={.spec.host})
+
+            echo $REPORTER_URL
+
+            oc get ibmlicensing instance -n ibm-licensing -o json > instance.json
+
+            jq --arg REPORTER_URL $REPORTER_URL \
+                '.spec.sender += {"reporterSecretToken":"ibm-license-service-reporter-token"} |
+                  .spec.sender += {"reporterURL":($REPORTER_URL)}' \
+                instance.json > instance-updated.json       
+
+            oc apply -f instance-updated.json
+
+            echo "Waiting for license service instance to be ready..."
+            
+            while ! oc wait --for=jsonpath='{.status.licensingPods[0].conditions[1].status}'=True 
+            IBMLicensing/instance -n ibm-licensing 2>/dev/null; do sleep 30; done
+
+            echo "Data source for license service is ready"     
+        - name: VERSION
+          value: latest
+      runAfter:
+        - license-service-installation
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(params.CP4I_VERSION)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_LICENSE_SERVICE)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.DEPLOY_LICENSE_REPORTER)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
