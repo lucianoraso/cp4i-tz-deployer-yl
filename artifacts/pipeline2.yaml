@@ -280,7 +280,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250224-001"
+            REPO_SIGNATURE="JGR-20250302-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -639,7 +639,7 @@ spec:
 
             echo "Updating template with Bootsrap info..."
 
-            ES_VERSION="11.6.0"
+            ES_VERSION="11.6.1"
 
             ( echo "cat <<EOF" ; cat templates/template-es-kafka-connect.yaml ;) | \
                 ES_BOOTSTRAP_SERVER=${ES_BOOTSTRAP_SERVER} \
@@ -1335,13 +1335,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.7-r1'
+                    MQ_VERSION='9.4.0.10-r1'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.1.1-r1'
+                    MQ_VERSION='9.4.2.0-r1'
             
             esac
 
@@ -1535,13 +1535,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.7-r1'
+                    MQ_VERSION='9.4.0.10-r1'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.1.1-r1'
+                    MQ_VERSION='9.4.2.0-r1'
             
             esac
 
