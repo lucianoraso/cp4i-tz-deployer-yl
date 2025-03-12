@@ -280,7 +280,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250302-001"
+            REPO_SIGNATURE="JGR-20250311-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -3526,6 +3526,8 @@ spec:
             echo "Preparing cp4i assembly instance manifest"
 
             (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/01-assembly-demo-api-ir.yaml ;) | \
+                APIC_CREDENTIALS="apim-credentials-api-key" \
+                APIC_PROVIDER_ORG="cp4i-demo-org" \
                 OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
                 sh > cp4i-assembly-instance.yaml
 
@@ -3547,6 +3549,8 @@ spec:
             echo "Preparing cp4i assembly instance manifest"
 
             (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/02-assembly-demo-product-ir.yaml ;) | \
+                APIC_CREDENTIALS="apim-credentials-api-key" \
+                APIC_PROVIDER_ORG="cp4i-demo-org" \
                 OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
                 sh > cp4i-assembly-instance.yaml
 
@@ -3568,6 +3572,8 @@ spec:
             echo "Preparing cp4i assembly instance manifest"
 
             (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/03-assembly-demo-product-ir.yaml ;) | \
+                APIC_CREDENTIALS="apim-credentials-api-key" \
+                APIC_PROVIDER_ORG="cp4i-demo-org" \
                 OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
                 sh > cp4i-assembly-instance.yaml
 
