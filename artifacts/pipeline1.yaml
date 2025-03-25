@@ -32,8 +32,11 @@ spec:
                     echo "   Admin user: " $CP4I_ADMIN_USER
                     echo "   Admin initial password: " $CP4I_ADMIN_INITIAL_PWD
                     echo "----------------------------"
-                    oc create configmap pipeline-cp4i-demo-output -n default 
-                    oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed for v$(params.CP4I_VERSION)\",\"cp4i-url\":\"${CP4I_URL}\",\"cp4i-admin-username\":\"${CP4I_ADMIN_USER}\",\"cp4i-admin-initial-password\":\"${CP4I_ADMIN_INITIAL_PWD}\"}}"
+                    oc create configmap pipeline-cp4i-demo-output -n default \
+                      --from-literal=msg="Pipeline CP4I Demo run completed for v$(params.CP4I_VERSION)" \
+                      --from-literal=cp4i-url="$CP4I_URL" \
+                      --from-literal=cp4i-admin-username="$CP4I_ADMIN_USER" \
+                      --from-literal=cp4i-admin-initial-password="$CP4I_ADMIN_INITIAL_PWD"
 
                     if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT)" == "true" ]] &&
                        [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_OPERATOR)" == "true" ]]; then
@@ -92,8 +95,15 @@ spec:
                     echo "PostgreSQL Database..."
                     echo "   JDBC URI:" $JDBC_URI
                     echo "----------------------------"
-                    oc create configmap pipeline-ea-demo-output -n default 
-                    oc patch configmap/pipeline-ea-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"eem-url\":\"${EEM_URL}\",\"eem-admin-username\":\"${EEM_ADMIN_USER}\",\"eem-admin-password\":\"${EEM_ADMIN_PASSWORD}\",\"ep-url\":\"${EP_URL}\",\"ep-admin-username\":\"${EP_ADMIN_USER}\",\"ep-admin-password\":\"${EP_ADMIN_PASSWORD}\",\"jdbc-uri\":\"${JDBC_URI}\"}}"
+                    oc create configmap pipeline-ea-demo-output -n default \
+                      --from-literal=msg="Pipeline CP4I Demo run completed" \
+                      --from-literal=eem-url="$EEM_URL" \
+                      --from-literal=eem-admin-username="$EEM_ADMIN_USER" \
+                      --from-literal=eem-admin-password="$EEM_ADMIN_PASSWORD" \
+                      --from-literal=ep-url="$EP_URL" \
+                      --from-literal=ep-admin-username="$EP_ADMIN_USER" \
+                      --from-literal=ep-admin-password="$EP_ADMIN_PASSWORD" \
+                      --from-literal=jdbc-uri="$JDBC_URI"
 
                     if [[ "$(params.DEPLOY_LICENSE_REPORTER)" == "true" ]] &&
                        [[ "$(params.DEPLOY_LICENSE_SERVICE)" == "true" ]]; then
@@ -108,14 +118,17 @@ spec:
                         echo "   Admin user: " $LSR_USER_NAME
                         echo "   Admin initial password: " $LSR_USER_PWD
                         echo "----------------------------"       
-                        oc create configmap pipeline-lsr-demo-output -n default 
-                        oc patch configmap/pipeline-lsr-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"lsr-url\":\"${LSR_URL}\",\"lsr-admin-username\":\"${LSR_USER_NAME}\",\"lsr-admin-password\":\"${LSR_USER_PWD}\"}}"
+                        oc create configmap pipeline-lsr-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Demo run completed" \
+                          --from-literal=lsr-url="$LSR_URL" \
+                          --from-literal=lsr-admin-username="$LSR_USER_NAME" \
+                          --from-literal=lsr-admin-password="$LSR_USER_PWD"
                     else
                         echo "----------------------------"
                         echo "License Service Reporter was not installed per user request."
                         echo "----------------------------"
-                        oc create configmap pipeline-lsr-demo-output -n default 
-                        oc patch configmap/pipeline-lsr-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed, but License Service Reporter was not installed per user request.\"}}"
+                        oc create configmap pipeline-lsr-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Demo run completed, but License Service Reporter was not installed per user request."
                     fi
 
                     MAILPIT_URL="http://"$(oc get route mailpit-ui -n mailpit -o jsonpath='{.status.ingress[0].host}')
@@ -125,23 +138,26 @@ spec:
                     echo "   Admin user:  mailpit-admin" 
                     echo "   Admin password: " $(oc get secret jgr-mailpit -n default -o jsonpath='{.data.password}' | base64 -d)
                     echo "----------------------------"       
-                    oc create configmap pipeline-mailpit-demo-output -n default 
-                    oc patch configmap/pipeline-mailpit-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo run completed\",\"mailpit-ui-url\":\"${MAILPIT_URL}\",\"mailpit-admin-username\":\"mailpit-admin\",\"mailpit-admin-password\":\"$(oc get secret jgr-mailpit -n default -o jsonpath='{.data.password}' | base64 -d)\"}}"
+                    oc create configmap pipeline-mailpit-demo-output -n default \
+                      --from-literal=msg="Pipeline CP4I Demo run completed" \
+                      --from-literal=mailpit-ui-url="$MAILPIT_URL" \
+                      --from-literal=mailpit-admin-username=mailpit-admin \
+                      --from-literal=mailpit-admin-password="$(oc get secret jgr-mailpit -n default -o jsonpath='{.data.password}' | base64 -d)"
                 else
                     echo "----------------------------"
                     echo "Pipeline CP4I Demo couldn't run successfully."              
                     echo "Check the logs in setup-workspace task for more details."
                     echo "----------------------------"
-                    oc create configmap pipeline-cp4i-demo-output -n default 
-                    oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo couldn't run. Check the logs in setup-workspace task for more details.\"}}"
+                    oc create configmap pipeline-cp4i-demo-output -n default \
+                      --from-literal=msg="Pipeline CP4I Demo couldn't run. Check the logs in setup-workspace task for more details."
                 fi
             else
                 echo "----------------------------"
                 echo "Pipeline CP4I Demo didn't run. The version provided is not valid."              
                 echo "Supported versions are 16.1.0 and 16.1.1. Correct parameter CP4I_VERSION and try again."
                 echo "----------------------------"
-                oc create configmap pipeline-cp4i-demo-output -n default 
-                oc patch configmap/pipeline-cp4i-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo didn't run. The value provided in parameter CP4I_VERSION is not valid.\"}}"
+                oc create configmap pipeline-cp4i-demo-output -n default \
+                  --from-literal=msg="Pipeline CP4I Demo didn't run. The value provided in parameter CP4I_VERSION is not valid."
             fi
         - name: VERSION
           value: latest

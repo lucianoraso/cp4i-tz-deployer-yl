@@ -11,11 +11,15 @@ spec:
       params:
         - name: SCRIPT
           value: >-
+            cd workspace
+
             oc delete configmap/pipeline-cp4i-config-output -n default --ignore-not-found=true 
             
             oc delete configmap/pipeline-extra-api-gtwy-demo-output -n default --ignore-not-found=true 
 
             oc delete configmap/pipeline-apic-demo-output -n default --ignore-not-found=true 
+
+            oc delete configmap/pipeline-qmgr-demo-output -n default --ignore-not-found=true 
 
             if [[ "$(tasks.setup-workspace.results.output)" == "true" ]]; then
                 if [[ "$(tasks.check-cp4i-version.results.output)" == "16.1.0" ]] || 
@@ -34,8 +38,10 @@ spec:
                                 echo "Management Endpoint URL: https://"$API_GTWY_MGR
                                 echo "API Endpoint Base URL: https://"$API_GTWY_EP
                                 echo "----------------------------"
-                                oc create configmap pipeline-extra-api-gtwy-demo-output -n default 
-                                oc patch configmap/pipeline-extra-api-gtwy-demo-output -p "{\"data\":{\"msg\":\"Pipeline run completed\",\"mgmt-endpoint-url\":\"https://${API_GTWY_MGR}\",\"api-endpoint-url\":\"https://${API_GTWY_EP}\"}}"
+                                oc create configmap pipeline-extra-api-gtwy-demo-output -n default \
+                                  --from-literal=msg="Pipeline run completed" \
+                                  --from-literal=mgmt-endpoint-url="https://$API_GTWY_MGR" \
+                                  --from-literal=api-endpoint-url="https://$API_GTWY_EP"
                                 if [[ ! -z "$(params.APIC_API_KEY)" ]]; then
                                     CHECK_API_KEY=$(oc get secret jgr-apic-api-key -n default --ignore-not-found -o jsonpath='{.data.check}' | base64 -d)
                                     if [[ -z "${CHECK_API_KEY}" ]]; then
@@ -50,49 +56,53 @@ spec:
                                         echo "   User name: andre"
                                         echo "   User password:" $(oc get secret jgr-apic-consumer-org -n default -o jsonpath='{.data.password}' | base64 -d)
                                         echo "----------------------------"
-                                        oc create configmap pipeline-apic-demo-output -n default 
-                                        oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed\",\"sandbox-portal-url\":\"${APIC_CONSUMER_CATALOG_URI}\",\"demo-portal-url\":\"${APIC_PTL_URI}\",\"demo-portal-username\":\"andre\",\"demo-portal-user-password\":\"$(oc get secret jgr-apic-consumer-org -n default -o jsonpath='{.data.password}' | base64 -d)\"}}"
+                                        oc create configmap pipeline-apic-demo-output -n default \
+                                          --from-literal=msg="Pipeline CP4I Config run completed" \
+                                          --from-literal=sandbox-portal-url="$APIC_CONSUMER_CATALOG_URI" \
+                                          --from-literal=demo-portal-url="$APIC_PTL_URI" \
+                                          --from-literal=demo-portal-username=andre \
+                                          --from-literal=demo-portal-user-password="$(oc get secret jgr-apic-consumer-org -n default -o jsonpath='{.data.password}' | base64 -d)"
                                     else
                                         echo "----------------------------"
                                         echo "APIC Demo assets were not configured because API Key was invalid."
                                         echo "----------------------------"
-                                        oc create configmap pipeline-apic-demo-output -n default 
-                                        oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but APIC Demo assets were not configured because API Key was invalid.\"}}"
+                                        oc create configmap pipeline-apic-demo-output -n default \
+                                          --from-literal=msg="Pipeline CP4I Config run completed, but APIC Demo assets were not configured because API Key was invalid."
                                     fi
                                     oc delete secret jgr-apic-api-key -n default --ignore-not-found
                                 else
                                     echo "----------------------------"
                                     echo "APIC Demo assets were not configured because API Key was not provided."
                                     echo "----------------------------"
-                                    oc create configmap pipeline-apic-demo-output -n default 
-                                    oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but Demo Portal assets were not configured because API Key was not provided.\"}}"
+                                    oc create configmap pipeline-apic-demo-output -n default \
+                                      --from-literal=msg="Pipeline CP4I Config run completed, but Demo Portal assets were not configured because API Key was not provided."
                                 fi
                             else
                               echo "----------------------------"
                               echo "APIC Demo assets were not installed because APIC instance was not deployed."
                               echo "----------------------------"
-                              oc create configmap pipeline-extra-api-gtwy-demo-output -n default 
-                              oc patch configmap/pipeline-extra-api-gtwy-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but Extra API Gateway was not deployed because APIC instance is not available.\"}}"
-                              oc create configmap pipeline-apic-demo-output -n default 
-                              oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but APIC instance was not configured because APIC instance is not available.\"}}"
+                              oc create configmap pipeline-extra-api-gtwy-demo-output -n default \
+                                --from-literal=msg="Pipeline CP4I Config run completed, but Extra API Gateway was not deployed because APIC instance is not available."
+                              oc create configmap pipeline-apic-demo-output -n default \
+                                --from-literal=msg="Pipeline CP4I Config run completed, but APIC instance was not configured because APIC instance is not available."
                             fi
                         else
                             echo "----------------------------"
                             echo "APIC Demo assets were not installed because the corresponding Operators are not installed."
                             echo "----------------------------"
-                            oc create configmap pipeline-extra-api-gtwy-demo-output -n default 
-                            oc patch configmap/pipeline-extra-api-gtwy-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but Extra API Gateway was not deployed because Operators are not available.\"}}"
-                            oc create configmap pipeline-apic-demo-output -n default 
-                            oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but APIC instance was not configured because Operators are not available.\"}}"
+                            oc create configmap pipeline-extra-api-gtwy-demo-output -n default \
+                              --from-literal=msg="Pipeline CP4I Config run completed, but Extra API Gateway was not deployed because Operators are not available."
+                            oc create configmap pipeline-apic-demo-output -n default \
+                              --from-literal=msg="Pipeline CP4I Config run completed, but APIC instance was not configured because Operators are not available."
                         fi
                     else
                         echo "----------------------------"
                         echo "APIC Demo assets were not installed per user request."
                         echo "----------------------------"
-                        oc create configmap pipeline-extra-api-gtwy-demo-output -n default 
-                        oc patch configmap/pipeline-extra-api-gtwy-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but Extra API Gateway was not deployed per user request.\"}}"
-                        oc create configmap pipeline-apic-demo-output -n default 
-                        oc patch configmap/pipeline-apic-demo-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but APIC instance was not configured per user request.\"}}"
+                        oc create configmap pipeline-extra-api-gtwy-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Config run completed, but Extra API Gateway was not deployed per user request."
+                        oc create configmap pipeline-apic-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Config run completed, but APIC instance was not configured per user request."
                     fi
                     if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_DEMOS)" == "true" ]]; then
                         if [[ ! -z $(oc get deployment ibm-eem-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]] &&
@@ -105,43 +115,86 @@ spec:
                                         echo "----------------------------"
                                         echo "EEM Demo assets were configured successfully."
                                         echo "----------------------------"
-                                        oc create configmap pipeline-cp4i-config-output -n default 
-                                        oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, and EEM Demo assets were configured successfully.\"}}"
+                                        oc create configmap pipeline-cp4i-config-output -n default \
+                                          --from-literal=msg="Pipeline CP4I Config run completed, and EEM Demo assets were configured successfully."
                                     else
                                         echo "----------------------------"
                                         echo "EEM Demo assets were not configured because Token was invalid."
                                         echo "----------------------------"
-                                        oc create configmap pipeline-cp4i-config-output -n default 
-                                        oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but EEM Demo assets were not configured because Token was invalid.\"}}"
+                                        oc create configmap pipeline-cp4i-config-output -n default \
+                                          --from-literal=msg="Pipeline CP4I Config run completed, but EEM Demo assets were not configured because Token was invalid."
                                     fi
                                     oc delete secret jgr-eem-token -n default --ignore-not-found
                                 else
                                     echo "----------------------------"
                                     echo "EEM Demo assets were not configured because Token was not provided."
                                     echo "----------------------------"
-                                    oc create configmap pipeline-cp4i-config-output -n default 
-                                    oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but EEM assets were not configured because Token was not provided.\"}}"
+                                    oc create configmap pipeline-cp4i-config-output -n default \
+                                      --from-literal=msg="Pipeline CP4I Config run completed, but EEM assets were not configured because Token was not provided."
                                 fi
                             else
                               echo "----------------------------"
                               echo "EEM Demo assets were not installed because ES and/or EEM instances were not deployed."
                               echo "----------------------------"
-                              oc create configmap pipeline-cp4i-config-output -n default 
-                              oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but EEM instance was not configured because ES and/or EEM instances are not available.\"}}"
+                              oc create configmap pipeline-cp4i-config-output -n default \
+                                --from-literal=msg="Pipeline CP4I Config run completed, but EEM instance was not configured because ES and/or EEM instances are not available."
                             fi
                         else
                             echo "----------------------------"
                             echo "EEM Demo assets were not installed because the corresponding Operators are not installed."
                             echo "----------------------------"
-                            oc create configmap pipeline-cp4i-config-output -n default 
-                            oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but EEM instance was not configured because Operators are not available.\"}}"
+                            oc create configmap pipeline-cp4i-config-output -n default \
+                              --from-literal=msg="Pipeline CP4I Config run completed, but EEM instance was not configured because Operators are not available."
                         fi
                     else
                         echo "----------------------------"
                         echo "EEM Demo assets were not installed per user request."
                         echo "----------------------------"
-                        oc create configmap pipeline-cp4i-config-output -n default 
-                        oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config run completed, but EEM instance was not configured per user request.\"}}"
+                        oc create configmap pipeline-cp4i-config-output -n default \
+                          --from-literal=msg="Pipeline CP4I Config run completed, but EEM instance was not configured per user request."
+                    fi
+                    if [[ "$(params.DEPLOY_MQ_DEMOS)" == "true" ]]; then
+                        if [[ ! -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then
+                            if [[ ! -z "$(oc get queuemanager qmgr-demo -n $(params.CP4I_NAMESPACE) --no-headers --ignore-not-found)" ]]; then 
+                                oc extract secret/qmgr-demo-tls-secret -n $(params.CP4I_NAMESPACE) --keys=tls.crt
+                                oc extract secret/qmgr-demo-tls-secret -n $(params.CP4I_NAMESPACE) --keys=tls.key 
+                                openssl pkcs12 -export -in tls.crt -inkey tls.key -out qmgr-server-tls.p12 -name "qmgr server pkcs12" -passout pass:password
+                                keytool -importkeystore -srckeystore qmgr-server-tls.p12 -srcstoretype PKCS12 -srcstorepass password -destkeystore mqexplorerts.jks -deststoretype JKS -deststorepass password
+                                QMGR_HOST_NAME=$(oc get route qmgr-demo-ibm-mq-qm -n $(params.CP4I_NAMESPACE) -o jsonpath='{.status.ingress[0].host}')
+                                echo "----------------------------"
+                                echo "Queue Manager info to connect from MQ Explorer..."
+                                echo "   Name: QMGRDEMO"
+                                echo "   Host Name:" $QMGR_HOST_NAME
+                                echo "----------------------------"
+                                oc create configmap pipeline-qmgr-demo-output -n default \
+                                  --from-literal=msg="Pipeline CP4I Config run completed" \
+                                  --from-literal=qmgr-name=QMGRDEMO \
+                                  --from-literal=qmgr-host-name="$QMGR_HOST_NAME" \
+                                  --from-literal=qmgr-port-number=443 \
+                                  --from-literal=qmgr-channel="EXTAPP.TO.MQ" \
+                                  --from-literal=qmgr-ssl-cipher=ECDHE_RSA_AES_128_CBC_SHA256 \
+                                  --from-literal=qmgr-store-password=password \
+                                  --from-file=mqexplorerts.jks
+                            else
+                                echo "----------------------------"
+                                echo "MQ Demo assets were not installed because Queue Manager Demo instance was not deployed."
+                                echo "----------------------------"
+                                oc create configmap pipeline-qmgr-demo-output -n default \
+                                  --from-literal=msg="Pipeline CP4I Config run completed, but MQ Explorer JKS certificate was not configured because Queue Manager Demo instance is not available."
+                            fi
+                        else
+                            echo "----------------------------"
+                            echo "MQ Demo assets were not installed because the corresponding Operator is not installed."
+                            echo "----------------------------"
+                            oc create configmap pipeline-qmgr-demo-output -n default \
+                              --from-literal=msg="Pipeline CP4I Config run completed, but Queue Manager Demo instance was not configured because Operator is not available."
+                        fi
+                    else
+                        echo "----------------------------"
+                        echo "MQ Demo assets were not installed per user request."
+                        echo "----------------------------"
+                        oc create configmap pipeline-qmgr-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Config run completed, but Queue Manager Demo instance was not installed per user request."
                     fi
                 else
                     if [[ "$(tasks.check-cp4i-version.results.output)" == "0.0.0" ]]; then
@@ -149,15 +202,15 @@ spec:
                         echo "Pipeline CP4I Demo didn't run. There is no instance of Platform UI in the namespace provided."              
                         echo "Check parameter CP4I_NAMESPACES has the proper value or deploy an instance."
                         echo "----------------------------"
-                        oc create configmap pipeline-cp4i-config-output -n default 
-                        oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo didn't run. There is no instance of Platform UI in the namespace provided.\"}}"
+                        oc create configmap pipeline-cp4i-config-output -n default \
+                          --from-literal=msg="Pipeline CP4I Demo didn't run. There is no instance of Platform UI in the namespace provided."
                     else
                         echo "----------------------------"
                         echo "Pipeline CP4I Demo didn't run. The version installed of Platform UI is not supported by this Pipeline."              
                         echo "Supported versions are 16.1.0 and 16.1.1. Upgrade Platform UI and try again."
                         echo "----------------------------"
-                        oc create configmap pipeline-cp4i-config-output -n default 
-                        oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Demo didn't run. The version installed of Platform UI is not compatible.\"}}"
+                        oc create configmap pipeline-cp4i-config-output -n default \
+                          --from-literal=msg="Pipeline CP4I Demo didn't run. The version installed of Platform UI is not compatible."
                     fi
                 fi
             else
@@ -165,8 +218,8 @@ spec:
                 echo "Pipeline CP4I Config couldn't run successfully."
                 echo "Check the logs in setup-workspace task for more details."
                 echo "----------------------------"
-                oc create configmap pipeline-cp4i-config-output -n default 
-                oc patch configmap/pipeline-cp4i-config-output -p "{\"data\":{\"msg\":\"Pipeline CP4I Config couldn't run. Check the logs in setup-workspace task for more details.\"}}"
+                oc create configmap pipeline-cp4i-config-output -n default \
+                  --from-literal=msg="Pipeline CP4I Config couldn't run. Check the logs in setup-workspace task for more details."
             fi
         - name: VERSION
           value: latest
