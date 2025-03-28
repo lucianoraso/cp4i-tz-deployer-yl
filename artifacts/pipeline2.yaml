@@ -247,6 +247,10 @@ spec:
       default: 'true'
       description: Deploy apiconnect demo assets
       type: string
+    - name: DEPLOY_DATAPOWER_DEMOS
+      default: 'true'
+      description: Deploy datapower demo assets
+      type: string
     - name: DEPLOY_EVENT_ENDPOINT_MANAGEMENT_DEMOS
       default: 'true'
       description: Deploy event endpoint management demo assets
@@ -333,7 +337,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250316-001"
+            REPO_SIGNATURE="JGR-20250325-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -1230,17 +1234,17 @@ spec:
             set -o xtrace
 
             if [[ -z $(oc get deployment datapower-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
-                echo "Skipping Extra DP instance deployment, Operator was not installed."
+                echo "Skipping Extra API Gateway instance deployment, Operator was not installed."
                 exit 0
             fi
 
             if [[ -z $(oc get deployment ibm-apiconnect -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
-                echo "Skipping Extra DP instance deployment, Operator was not installed."
+                echo "Skipping Extra API Gateway instance deployment, Operator was not installed."
                 exit 0
             fi
 
             if [[ -z "$(oc get APIConnectCluster apim-demo -n $(params.CP4I_NAMESPACE) --no-headers --ignore-not-found)" ]]; then 
-                echo "Skipping Extra DP instance deployment, Instance was not deployed."
+                echo "Skipping Extra API Gateway instance deployment, Instance was not deployed."
                 exit 0
             fi
 
@@ -1327,6 +1331,91 @@ spec:
           values: ["true"]
       workspaces:
         - name: cp4i-ws
+    - name: dp-demo-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment datapower-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping DP instance deployment, Operator was not installed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying DP Gateway instance..."
+
+            echo "Creating DP Gateway configuration..."
+
+            oc apply -f resources/16a-dp-gw-webui-config.yaml -n $(params.DP_NAMESPACE)
+
+            echo "Creating DP Gateway admin secret..."
+
+            if [[ -z "$(oc get secret admin-secret -n $(params.DP_NAMESPACE) --no-headers --ignore-not-found)" ]]; then
+                oc -n $(params.DP_NAMESPACE) create secret generic admin-secret --from-literal=password=admin
+            else
+                echo "Secret already exists."
+            fi
+
+            echo "Creating DP Gateway instance..."
+
+            oc apply -f instances/$(tasks.check-cp4i-version.results.output)/24-dp-gwy-instance.yaml -n $(params.DP_NAMESPACE)
+
+            echo "Waiting for DP gateway instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            DataPowerService/dp-demo -n
+            $(params.DP_NAMESPACE) 2>/dev/null; do sleep 30; done
+
+            echo "Create service to expose DP Gateway ports..."
+
+            oc apply -f resources/16b-dp-gw-services.yaml -n $(params.DP_NAMESPACE)
+
+            echo "Preparing Route File for DP WebUI..."
+
+            STACK_HOST="apps.$(oc get dnses.config.openshift.io cluster -o jsonpath='{.spec.baseDomain}')"
+            
+            ( echo "cat <<EOF" ; cat templates/template-dp-gw-webui-route.yaml ;) | \
+                STACK_HOST=${STACK_HOST} \
+                sh > dp-webui-route.yaml
+
+            echo "Creating DP WebUI Route..."
+
+            oc apply -f dp-webui-route.yaml -n $(params.DP_NAMESPACE)
+
+            echo "Preparing Route File for DP HTTP User Traffic..."
+
+            ( echo "cat <<EOF" ; cat templates/template-dp-gw-http-route.yaml ;) | \
+                STACK_HOST=${STACK_HOST} \
+                sh > dp-http-route.yaml
+
+            echo "Creating DP HTTP Route..."
+
+            oc apply -f dp-http-route.yaml -n $(params.DP_NAMESPACE)
+
+            echo "DP Gateway instance has been deployed"
+        - name: VERSION
+          value: latest
+      retries: 3
+      runAfter:
+        - apic-deploy-extra-gw
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      timeout: 3h0m0s  
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(params.DEPLOY_DATAPOWER_DEMOS)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws  
     - name: qmgr-demo-instance-deployment
       params:
         - name: SCRIPT
@@ -1418,7 +1507,7 @@ spec:
         - name: VERSION
           value: latest
       runAfter:
-        - apic-deploy-extra-gw
+        - dp-demo-instance-deployment
       taskRef:
         kind: Task
         name: jgr-task-0.2
