@@ -19,6 +19,8 @@ spec:
 
             oc delete configmap/pipeline-apic-demo-output -n default --ignore-not-found=true 
 
+            oc delete configmap/pipeline-dp-gtwy-demo-output -n default --ignore-not-found=true 
+
             oc delete configmap/pipeline-qmgr-demo-output -n default --ignore-not-found=true 
 
             if [[ "$(tasks.setup-workspace.results.output)" == "true" ]]; then
@@ -104,6 +106,42 @@ spec:
                         oc create configmap pipeline-apic-demo-output -n default \
                           --from-literal=msg="Pipeline CP4I Config run completed, but APIC instance was not configured per user request."
                     fi
+                    if [[ "$(params.DEPLOY_DATAPOWER_DEMOS)" == "true" ]]; then
+                        if [[ ! -z $(oc get deployment datapower-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then
+                            if [[ ! -z "$(oc get DataPowerService dp-demo -n $(params.DP_NAMESPACE) --no-headers --ignore-not-found)" ]]; then
+                                DP_WEBUI_URL="https://"$(oc get route dpwebui-route -n cp4i-dp -o jsonpath='{.spec.host}')
+                                echo "----------------------------"
+                                echo "DataPower Gateway access information:"
+                                echo "   Web UI URL:" $DP_WEBUI_URL
+                                echo "   User name: admin"
+                                echo "   User password: admin"
+                                echo "----------------------------"
+                                oc create configmap pipeline-dp-gtwy-demo-output -n default \
+                                  --from-literal=msg="Pipeline CP4I Config run completed" \
+                                  --from-literal=dp-demo-webui-url="$DP_WEBUI_URL" \
+                                  --from-literal=dp-demo-username=admin \
+                                  --from-literal=dp-demo-user-password=admin
+                            else
+                                echo "----------------------------"
+                                echo "DP Demo assets were not installed because DataPower Gateway Demo instance was not deployed."
+                                echo "----------------------------"
+                                oc create configmap pipeline-dp-gtwy-demo-output -n default \
+                                  --from-literal=msg="Pipeline CP4I Config run completed, but DataPower Gateway Demo instance is not available."
+                            fi
+                        else
+                            echo "----------------------------"
+                            echo "DP Demo assets were not installed because the corresponding Operator is not installed."
+                            echo "----------------------------"
+                            oc create configmap pipeline-dp-gtwy-demo-output -n default \
+                              --from-literal=msg="Pipeline CP4I Config run completed, but DataPower Gateway Demo instance was not configured because Operator is not available."
+                        fi
+                    else
+                        echo "----------------------------"
+                        echo "DP Demo assets were not installed per user request."
+                        echo "----------------------------"
+                        oc create configmap pipeline-dp-gtwy-demo-output -n default \
+                          --from-literal=msg="Pipeline CP4I Config run completed, but DataPower Gateway Demo instance was not installed per user request."
+                    fi
                     if [[ "$(params.DEPLOY_EVENT_ENDPOINT_MANAGEMENT_DEMOS)" == "true" ]]; then
                         if [[ ! -z $(oc get deployment ibm-eem-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]] &&
                            [[ ! -z $(oc get deployment eventstreams-cluster-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then
@@ -165,6 +203,10 @@ spec:
                                 echo "Queue Manager info to connect from MQ Explorer..."
                                 echo "   Name: QMGRDEMO"
                                 echo "   Host Name:" $QMGR_HOST_NAME
+                                echo "   Port Number: 443"
+                                echo "   Channel Name: EXTAPP.TO.MQ"
+                                echo "   SSL Cipher: ECDHE_RSA_AES_128_CBC_SHA256"
+                                echo "   Store Password: password"
                                 echo "----------------------------"
                                 oc create configmap pipeline-qmgr-demo-output -n default \
                                   --from-literal=msg="Pipeline CP4I Config run completed" \
@@ -267,6 +309,10 @@ spec:
       default: cp4i-dp
       description: Namespace to deploy Extra API Gateway
       type: string
+    - name: MQ_NAMESPACE
+      default: cp4i-mq
+      description: Namespace to deploy Extra Queue Managers
+      type: string
     - name: MQ_UNIFORM_CLUSTER_NAMESPACE
       default: cp4i
       description: Namespace to deploy MQ Uniform Cluster assets
@@ -337,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250328-001"
+            REPO_SIGNATURE="JGR-20250329-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -510,7 +556,7 @@ spec:
           value: |-
             set -o xtrace
 
-            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
+            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
 
             for NS in "${CP4I_NAMESPACES[@]}"
 
@@ -1615,7 +1661,7 @@ spec:
             set -o xtrace
 
             if [[ -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
-                echo "Skipping MQ Kafka Connectors deployment, Operator was not installed."
+                echo "Skipping MQ Uniform Cluster deployment, Operator was not installed."
                 exit 0
             fi
 
@@ -1771,6 +1817,118 @@ spec:
           values: ["true"]
       workspaces:
         - name: cp4i-ws
+    - name: mq-deploy-extra-qmgrs
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping Extra Queue Managers deployment, Operator was not installed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying Extra Queue Managers"
+
+            echo "Setting MQ Version"
+
+            case "$(tasks.check-cp4i-version.results.output)" in
+
+                "16.1.0")
+            
+                    MQ_VERSION='9.4.0.10-r1'
+            
+                    ;;
+            
+                "16.1.1")
+            
+                    MQ_VERSION='9.4.2.0-r1'
+            
+            esac
+
+            echo "Preparing queue manager instance manifest"
+            
+            (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/10-qmgr-base-single-instance.yaml ;) | \
+                MQ_VERSION=${MQ_VERSION} \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > qmgr-base-single-instance.yaml
+
+            echo "Deploying queue manager instance"
+
+            oc apply -f qmgr-base-single-instance.yaml -n
+            $(params.MQ_NAMESPACE)
+
+            echo "Waiting for queue manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/qmgr-base -n
+            $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Queue manager instance is ready"
+
+            echo "Preparing queue manager instance manifest"
+            
+            (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/11a-qmgr-base-multi-instance-storage.yaml ;) | \
+                MQ_VERSION=${MQ_VERSION} \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                OCP_FILE_STORAGE=$(params.OCP_FILE_STORAGE) \
+                sh > qmgr-base-multi-instance-storage.yaml
+
+            echo "Deploying queue manager instance"
+
+            oc apply -f qmgr-base-multi-instance-storage.yaml -n
+            $(params.MQ_NAMESPACE)
+
+            echo "Waiting for queue manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/qmgr-base-multi-inst -n
+            $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Queue manager instance is ready"
+
+            echo "Preparing queue manager instance manifest"
+            
+            (echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/14-qmgr-bake-image-instance.yaml ;) | \
+                MQ_VERSION=${MQ_VERSION} \
+                OCP_BLOCK_STORAGE=$(params.OCP_BLOCK_STORAGE) \
+                sh > qmgr-bake-image-instance.yaml
+
+            echo "Deploying queue manager instance"
+
+            oc apply -f qmgr-bake-image-instance.yaml -n
+            $(params.MQ_NAMESPACE)
+
+            echo "Waiting for queue manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/qmgr-bake-image -n
+            $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Queue manager instance is ready"
+
+            echo "The Extra Queue Managers are ready."
+        - name: VERSION
+          value: latest
+      runAfter:
+        - mq-uniform-cluster-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(params.DEPLOY_MQ_DEMOS)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
     - name: ace-configuration-barauth
       params:
         - name: SCRIPT
@@ -1815,7 +1973,7 @@ spec:
         - name: VERSION
           value: latest
       runAfter:
-        - mq-uniform-cluster-deployment
+        - mq-deploy-extra-qmgrs
       taskRef:
         kind: Task
         name: jgr-task-0.2
