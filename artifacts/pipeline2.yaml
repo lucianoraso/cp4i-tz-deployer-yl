@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250329-001"
+            REPO_SIGNATURE="JGR-20250329-002"
 
             echo "Setting up workspace for pipeline"
             
@@ -1817,7 +1817,7 @@ spec:
           values: ["true"]
       workspaces:
         - name: cp4i-ws
-    - name: mq-deploy-extra-qmgrs
+    - name: mq-base-instance-deployment
       params:
         - name: SCRIPT
           value: >-
@@ -1830,7 +1830,7 @@ spec:
 
             cd workspace/cp4i-ws/cp4i-deployer-helper
 
-            echo "Deploying Extra Queue Managers"
+            echo "Deploying MQ Base Single Instace..."
 
             echo "Setting MQ Version"
 
@@ -1867,6 +1867,55 @@ spec:
             $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
 
             echo "Queue manager instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - mq-uniform-cluster-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(params.DEPLOY_MQ_DEMOS)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: mq-base-multi-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping Extra Queue Managers deployment, Operator was not installed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying MQ Base Multi Instace..."
+
+            echo "Setting MQ Version"
+
+            case "$(tasks.check-cp4i-version.results.output)" in
+
+                "16.1.0")
+            
+                    MQ_VERSION='9.4.0.10-r1'
+            
+                    ;;
+            
+                "16.1.1")
+            
+                    MQ_VERSION='9.4.2.0-r1'
+            
+            esac
 
             echo "Preparing queue manager instance manifest"
             
@@ -1888,6 +1937,55 @@ spec:
             $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
 
             echo "Queue manager instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - mq-base-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.0", "16.1.1"]
+        - input: "$(params.DEPLOY_MQ_DEMOS)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
+    - name: mq-bake-image-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping Extra Queue Managers deployment, Operator was not installed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Deploying Queue Manager with bake image..."
+
+            echo "Setting MQ Version"
+
+            case "$(tasks.check-cp4i-version.results.output)" in
+
+                "16.1.0")
+            
+                    MQ_VERSION='9.4.0.10-r1'
+            
+                    ;;
+            
+                "16.1.1")
+            
+                    MQ_VERSION='9.4.2.0-r1'
+            
+            esac
 
             echo "Preparing queue manager instance manifest"
             
@@ -1908,12 +2006,10 @@ spec:
             $(params.MQ_NAMESPACE)  2>/dev/null; do sleep 30; done
 
             echo "Queue manager instance is ready"
-
-            echo "The Extra Queue Managers are ready."
         - name: VERSION
           value: latest
       runAfter:
-        - mq-uniform-cluster-deployment
+        - mq-base-multi-instance-deployment
       taskRef:
         kind: Task
         name: jgr-task-0.2
@@ -1973,7 +2069,7 @@ spec:
         - name: VERSION
           value: latest
       runAfter:
-        - mq-deploy-extra-qmgrs
+        - mq-bake-image-instance-deployment
       taskRef:
         kind: Task
         name: jgr-task-0.2
