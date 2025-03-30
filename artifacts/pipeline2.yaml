@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250329-002"
+            REPO_SIGNATURE="JGR-20250330-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -2160,74 +2160,52 @@ spec:
 
             if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
                 echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
+            else
+                CONFIG_TYPE="policyproject"                 
+                CONFIG_DESCRIPTION="Policy to connect to Demo Queue Manager"
+                echo "Packaging Policy..."
+                mkdir CP4iQMGRDEMO && cp -a ../cp4i-ace-artifacts/CP4iQMGRDEMO/. CP4iQMGRDEMO/
+                QMGR_NAME='QMGRDEMO'
+                QMGR_HOST_NAME='qmgr-demo-ibm-mq.'$(params.CP4I_NAMESPACE)'.svc'                
+                ( echo "cat <<EOF" ; cat CP4iQMGRDEMO/QMGRDEMO.policyxml ;) | \
+                    QMGR_NAME=${QMGR_NAME} \
+                    QMGR_HOST_NAME=${QMGR_HOST_NAME} \
+                    sh > QMGRDEMO.policyxml                
+                mv -f QMGRDEMO.policyxml CP4iQMGRDEMO/QMGRDEMO.policyxml
+                zip -r CP4iQMGRDEMO.zip CP4iQMGRDEMO
+                CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4iQMGRDEMO.zip)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
+                    sh > ace-config-policy-mq.yaml
+                echo "Creating ACE Configuration..."                
+                oc apply -f ace-config-policy-mq.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration ace-qmgr-demo-policy assembly.integration.ibm.com/tools.jgr-demo=true
+                echo "MQ Policy Configuration is created"
             fi
-
-            CONFIG_TYPE="policyproject" 
-            
-            CONFIG_DESCRIPTION="Policy to connect to Demo Queue Manager"
-
-            echo "Packaging Policy..."
-
-            mkdir CP4iQMGRDEMO && cp -a ../cp4i-ace-artifacts/CP4iQMGRDEMO/. CP4iQMGRDEMO/
-
-            QMGR_NAME='QMGRDEMO'
-
-            QMGR_HOST_NAME='qmgr-demo-ibm-mq.'$(params.CP4I_NAMESPACE)'.svc'
-            
-            ( echo "cat <<EOF" ; cat CP4iQMGRDEMO/QMGRDEMO.policyxml ;) | \
-                QMGR_NAME=${QMGR_NAME} \
-                QMGR_HOST_NAME=${QMGR_HOST_NAME} \
-                sh > QMGRDEMO.policyxml
-            
-            mv -f QMGRDEMO.policyxml CP4iQMGRDEMO/QMGRDEMO.policyxml
-
-            zip -r CP4iQMGRDEMO.zip CP4iQMGRDEMO
-
-            CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4iQMGRDEMO.zip)
-            
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
-                sh > ace-config-policy-mq.yaml
-
-            echo "Creating ACE Configuration..."
-            
-            oc apply -f ace-config-policy-mq.yaml
-
-            oc -n $(params.ACE_NAMESPACE) label configuration ace-qmgr-demo-policy assembly.integration.ibm.com/tools.jgr-demo=true
-
-            echo "MQ Policy Configuration is created"
 
             CONFIG_NAME="jgr-default-qmgr"
 
             if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
                 echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
+            else
+                CONFIG_TYPE="serverconf"                
+                CONFIG_DESCRIPTION="Default QMgr for ACH Flows"
+                CONFIG_DATA_BASE64=$(base64 -w 0 -i templates/template-ace-server-config-ach-hl7.yaml)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
+                    sh > ace-config-server-conf.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-server-conf.yaml
+                echo "Server Conf Configuration has been created."
             fi
-
-            CONFIG_TYPE="serverconf"
-            
-            CONFIG_DESCRIPTION="Default QMgr for ACH Flows"
-
-            CONFIG_DATA_BASE64=$(base64 -w 0 -i templates/template-ace-server-config-ach-hl7.yaml)
-
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
-                sh > ace-config-server-conf.yaml
-
-            echo "Creating ACE Configuration..."
-
-            oc apply -f ace-config-server-conf.yaml
-
-            echo "Server Conf Configuration has been created."
         - name: VERSION
           value: latest
       runAfter:
@@ -2354,6 +2332,7 @@ spec:
                     SF_CLIENT_SECRET=$(params.SF_CLIENT_SECRET) \
                     SF_LOGIN_URL=$(params.SF_LOGIN_URL) \
                     sh > ace-config-account-sf.yaml
+                echo "Preparing Base64 data for Configuration..."
                 CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-config-account-sf.yaml)
                 echo "Prepare Configuration File"
                 ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
@@ -2457,6 +2436,11 @@ spec:
           value: >-
             set -o xtrace
 
+            if [[ -z $(oc get deployment ibm-appconnect-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping ACE ES configuration deployment, Operator was not installed."
+                exit 0
+            fi
+
             if [[ -z $(oc get deployment eventstreams-cluster-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
                 echo "Skipping ACE ES configuration deployment, Operator was not installed."
                 exit 0
@@ -2464,11 +2448,6 @@ spec:
 
             if [[ -z "$(oc get eventstreams es-demo -n $(params.ES_NAMESPACE) --no-headers --ignore-not-found)" ]]; then 
                 echo "Skipping ACE ES configuration deployment, Instance was not deployed."
-                exit 0
-            fi
-
-            if [[ -z $(oc get deployment ibm-appconnect-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
-                echo "Skipping ACE ES configuration deployment, Operator was not installed."
                 exit 0
             fi
 
@@ -2480,62 +2459,37 @@ spec:
 
             if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
                 echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
+            else
+                CONFIG_TYPE="policyproject"
+                CONFIG_DESCRIPTION="Policy to connect to Demo Event Streams Cluster"
+                echo "Packaging Policy..."
+                mkdir CP4IESDEMOSCRAM && cp -a ../cp4i-ace-artifacts/CP4IESDEMOSCRAM/. CP4IESDEMOSCRAM/
+                ES_BOOTSTRAP_SERVER=$(oc get eventstreams ${ES_INST_NAME} -n $(params.ES_NAMESPACE) -o=jsonpath='{range .status.kafkaListeners[*]}{.name} {.bootstrapServers}{"\n"}{end}' | awk '$1=="external" {print $2}')
+                ( echo "cat <<EOF" ; cat CP4IESDEMOSCRAM/es-demo.policyxml ;) | \
+                    ES_BOOTSTRAP_SERVER=${ES_BOOTSTRAP_SERVER} \
+                    sh > es-demo.policyxml
+                mv -f es-demo.policyxml CP4IESDEMOSCRAM/es-demo.policyxml                
+                zip -r CP4IESDEMOSCRAM.zip CP4IESDEMOSCRAM
+                CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4IESDEMOSCRAM.zip)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
+                    sh > ace-config-policy-es-scram.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-policy-es-scram.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration ace-es-demo-scram-policy assembly.integration.ibm.com/tools.jgr-demo=true
+                echo "ES Policy Configuration is created"
             fi
-
-            CONFIG_TYPE="policyproject"
-
-            CONFIG_DESCRIPTION="Policy to connect to Demo Event Streams Cluster"
-
-            echo "Packaging Policy..."
-
-            mkdir CP4IESDEMOSCRAM && cp -a ../cp4i-ace-artifacts/CP4IESDEMOSCRAM/. CP4IESDEMOSCRAM/
-
-            ES_BOOTSTRAP_SERVER=$(oc get eventstreams ${ES_INST_NAME} -n $(params.ES_NAMESPACE) -o=jsonpath='{range .status.kafkaListeners[*]}{.name} {.bootstrapServers}{"\n"}{end}' | awk '$1=="external" {print $2}')
-
-            ( echo "cat <<EOF" ; cat CP4IESDEMOSCRAM/es-demo.policyxml ;) | \
-                ES_BOOTSTRAP_SERVER=${ES_BOOTSTRAP_SERVER} \
-                sh > es-demo.policyxml
-
-            mv -f es-demo.policyxml CP4IESDEMOSCRAM/es-demo.policyxml
-            
-            zip -r CP4IESDEMOSCRAM.zip CP4IESDEMOSCRAM
-
-            CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4IESDEMOSCRAM.zip)
-            
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
-                sh > ace-config-policy-es-scram.yaml
-            
-            echo "Creating ACE Configuration..."
-
-            oc apply -f ace-config-policy-es-scram.yaml
-
-            oc -n $(params.ACE_NAMESPACE) label configuration ace-es-demo-scram-policy assembly.integration.ibm.com/tools.jgr-demo=true
-            
-            echo "ES Policy Configuration is created"
 
             ES_USER_ID='ace-user'
-
-            CONFIG_NAME="ace-es-demo-scram-secid"
-
-            if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
-                echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
-            fi
-
-            CONFIG_TYPE="setdbparms"
-
-            CONFIG_DESCRIPTION="Credentials to connect using SCRAM to ES Demo Cluster"
-
+            
             TRUSTSTORE_PWD=$(oc get secret ${ES_INST_NAME}-cluster-ca-cert -n $(params.ES_NAMESPACE) -o=jsonpath='{.data.ca\.password}' | base64 -d)
-
+            
             ES_USER_PWD=$(oc get secret ${ES_USER_ID} -n $(params.ES_NAMESPACE) -o=jsonpath='{.data.password}' | base64 -d)
-
+            
             cat <<EOF >ace-setdbparms-data-es-scram.txt
             
             truststore::truststorePass dummy $TRUSTSTORE_PWD
@@ -2544,58 +2498,50 @@ spec:
             
             EOF
 
-            CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-setdbparms-data-es-scram.txt)
+            CONFIG_NAME="ace-es-demo-scram-secid"
 
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
-                sh > ace-config-setdbparms-es-scram.yaml
-
-            echo "Creating ACE Configuration..."
-
-            oc apply -f ace-config-setdbparms-es-scram.yaml
-            
-            oc -n $(params.ACE_NAMESPACE) label configuration ace-es-demo-scram-secid assembly.integration.ibm.com/tools.jgr-demo=true
-
-            echo "SetDBParms Configuration for ES is created"
+            if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
+                echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
+            else
+                CONFIG_TYPE="setdbparms"
+                CONFIG_DESCRIPTION="Credentials to connect using SCRAM to ES Demo Cluster"
+                CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-setdbparms-data-es-scram.txt)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
+                    sh > ace-config-setdbparms-es-scram.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-setdbparms-es-scram.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration ace-es-demo-scram-secid assembly.integration.ibm.com/tools.jgr-demo=true
+                echo "SetDBParms Configuration for ES is created"
+            fi
 
             CONFIG_NAME="es-cert.p12"
 
             if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
                 echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
+            else
+                CONFIG_TYPE="truststore"    
+                CONFIG_DESCRIPTION="JKS certificate for Event Streams instance es-demo"
+                oc extract secret/${ES_INST_NAME}-cluster-ca-cert -n $(params.ES_NAMESPACE) --keys=ca.p12
+                mv ca.p12 es-cert.p12
+                CONFIG_DATA_BASE64=$(base64 -w 0 -i es-cert.p12)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
+                    sh > ace-config-truststore.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-truststore.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration es-cert.p12 assembly.integration.ibm.com/tools.jgr-demo=true
+                rm -f es-cert.p12
+                echo "TrustStore Configuration is created"
             fi
-
-            CONFIG_TYPE="truststore"
-            
-            CONFIG_DESCRIPTION="JKS certificate for Event Streams instance es-demo"
-
-            oc extract secret/${ES_INST_NAME}-cluster-ca-cert -n $(params.ES_NAMESPACE) --keys=ca.p12
-
-            mv ca.p12 es-cert.p12
-
-            CONFIG_DATA_BASE64=$(base64 -w 0 -i es-cert.p12)
-
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
-                sh > ace-config-truststore.yaml
-            
-            echo "Creating ACE Configuration..."
-            
-            oc apply -f ace-config-truststore.yaml
-            
-            oc -n $(params.ACE_NAMESPACE) label configuration es-cert.p12 assembly.integration.ibm.com/tools.jgr-demo=true
-
-            rm -f es-cert.p12
-
-            echo "TrustStore Configuration is created"
         - name: VERSION
           value: latest
       runAfter:
@@ -2769,77 +2715,58 @@ spec:
 
             if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
                 echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
+            else
+                CONFIG_TYPE="policyproject"
+                CONFIG_DESCRIPTION="Policy to configure default values for CP4I Demo"
+                echo "Packaging Policy..."
+                mkdir CP4IEMAIL && cp -a ../cp4i-ace-artifacts/CP4IEMAIL/. CP4IEMAIL/
+                zip -r CP4IEMAIL.zip CP4IEMAIL
+                CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4IEMAIL.zip)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
+                    sh > ace-config-policy-email.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-policy-email.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration ace-email-server-policy assembly.integration.ibm.com/tools.jgr-demo=true
+                echo "eMail Server Policy Configuration is created"
             fi
-
-            CONFIG_TYPE="policyproject"
-
-            CONFIG_DESCRIPTION="Policy to configure default values for CP4I Demo"
-            
-            echo "Packaging Policy..."
-            
-            mkdir CP4IEMAIL && cp -a ../cp4i-ace-artifacts/CP4IEMAIL/. CP4IEMAIL/
-            
-            zip -r CP4IEMAIL.zip CP4IEMAIL
-            
-            CONFIG_CONTENT_BASE64=$(base64 -w 0 -i CP4IEMAIL.zip)
-
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-content.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_CONTENT_BASE64=${CONFIG_CONTENT_BASE64} \
-                sh > ace-config-policy-email.yaml
-
-            echo "Creating ACE Configuration..."
-
-            oc apply -f ace-config-policy-email.yaml
-
-            oc -n $(params.ACE_NAMESPACE) label configuration ace-email-server-policy assembly.integration.ibm.com/tools.jgr-demo=true
-
-            echo "eMail Server Policy Configuration is created"
 
             echo "Building SetDBParms Configuration for eMail Server"
-
-            CONFIG_NAME="ace-email-server-secid"
-
-            if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
-                echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
-                exit 0
-            fi
-
-            CONFIG_TYPE="setdbparms"
             
-            CONFIG_DESCRIPTION="Credentials to connect to eMail Server MailTrap"
-
             MAILTRAP_USER='mailpit-user'
-
+            
             MAILTRAP_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
-
+            
             cat <<EOF >ace-setdbparms-data-email.txt
             
             smtp::mailtrapsecid $MAILTRAP_USER $MAILTRAP_PWD
             
             EOF
 
-            CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-setdbparms-data-email.txt)
-
-            ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
-                CONFIG_NAME=${CONFIG_NAME} \
-                CONFIG_TYPE=${CONFIG_TYPE} \
-                CONFIG_NS=$(params.ACE_NAMESPACE) \
-                CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
-                CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
-                sh > ace-config-setdbparms-email.yaml
-            
-            echo "Creating ACE Configuration..."
-            
-            oc apply -f ace-config-setdbparms-email.yaml
-            
-            oc -n $(params.ACE_NAMESPACE) label configuration ace-email-server-secid assembly.integration.ibm.com/tools.jgr-demo=true
-
-            echo "SetDBParms Configuration for eMail Server is created"
+            CONFIG_NAME="ace-email-server-secid"
+                        
+            if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
+                echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
+            else
+                CONFIG_TYPE="setdbparms"
+                CONFIG_DESCRIPTION="Credentials to connect to eMail Server MailTrap"
+                CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-setdbparms-data-email.txt)
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
+                    sh > ace-config-setdbparms-email.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-setdbparms-email.yaml
+                oc -n $(params.ACE_NAMESPACE) label configuration ace-email-server-secid assembly.integration.ibm.com/tools.jgr-demo=true
+                echo "SetDBParms Configuration for eMail Server is created"
+            fi
         - name: VERSION
           value: latest
       runAfter:
@@ -3800,6 +3727,168 @@ spec:
           values: ["true"]
       workspaces:
         - name: cp4i-ws
+    - name: apic-create-engagement-resources
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment ibm-appconnect-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping APIC configuration, Operator was not installed."
+                exit 0
+            fi
+
+            if [[ -z $(oc get deployment datapower-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping APIC configuration, Operator was not installed."
+                exit 0
+            fi
+
+            if [[ -z $(oc get deployment ibm-apiconnect -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping APIC configuration, Operator was not installed."
+                exit 0
+            fi            
+
+            if [[ -z "$(oc get APIConnectCluster apim-demo -n $(params.CP4I_NAMESPACE) --no-headers --ignore-not-found)" ]]; then 
+                echo "Skipping APIC configuration, Instance was not deployed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws
+
+            CONFIG_NAME="ace-email-designer-account"
+
+            if [[ ! -z "$(oc get configuration ${CONFIG_NAME} -n $(params.ACE_NAMESPACE) --no-headers --ignore-not-found)"  ]]; then
+                echo "Skipping ACE Configuration deployment, ${CONFIG_NAME} already exists."
+            else
+                CONFIG_TYPE="accounts"
+                CONFIG_DESCRIPTION="Credentials to connect to MailPit from Designer Flow"
+                ACCOUNT_NAME="JGRMailPitAcct"
+                MAILPIT_USER="admin@cp4i.demo.net"
+                MAILPIT_PWD=$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')
+                MAILPIT_URL="mailpit-smtp.mailpit.svc.cluster.local:1025"
+                echo "Prepare Config content"
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-account-email.yaml ;) | \
+                    ACCOUNT_NAME=${ACCOUNT_NAME} \
+                    MAILPIT_USER=${MAILPIT_USER} \
+                    MAILPIT_PWD=${MAILPIT_PWD} \
+                    MAILPIT_URL=${MAILPIT_URL} \
+                    sh > ace-config-account-email.yaml
+                echo "Preparing Base64 data for Configuration..."
+                CONFIG_DATA_BASE64=$(base64 -w 0 -i ace-config-account-email.yaml)
+                echo "Prepare Configuration File"
+                ( echo "cat <<EOF" ; cat templates/template-ace-config-data.yaml ;) | \
+                    CONFIG_NAME=${CONFIG_NAME} \
+                    CONFIG_TYPE=${CONFIG_TYPE} \
+                    CONFIG_NS=$(params.ACE_NAMESPACE) \
+                    CONFIG_DESCRIPTION=${CONFIG_DESCRIPTION} \
+                    CONFIG_DATA_BASE64=${CONFIG_DATA_BASE64} \
+                    sh > ace-config-accounts-designer.yaml
+                echo "Creating ACE Configuration..."
+                oc apply -f ace-config-accounts-designer.yaml
+                echo "Account Configuration for MailPit has been created."
+            fi
+
+            echo "Deploying Integration APIC Engagement..."
+
+            oc apply -f instances/$(tasks.check-cp4i-version.results.output)/29-ace-is-apic-engagement-instance.yaml -n $(params.ACE_NAMESPACE)
+
+            echo "Waiting for Integration Server to be deployed..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            integrationruntimes/jgr-apic-engagement -n
+            $(params.ACE_NAMESPACE)  2>/dev/null; do sleep 30; done
+
+            echo "Integration Server is deployed"
+
+            echo "Creating Engagement Destination and Rule ..."
+
+            ./apic --accept-license --live-help=false
+
+            echo "Setting apic variables"
+
+            APIC_INST_NAME='apim-demo'
+
+            APIC_ORG='cp4i-demo-org'
+
+            APIC_MGMT_SERVER=$(oc get route "${APIC_INST_NAME}-mgmt-platform-api" -n $(params.CP4I_NAMESPACE) -o jsonpath="{.spec.host}")
+
+            APIC_ANALYTICS_SERVICE='analytics-service'
+
+            DESTINATION_NAME="JGR ACE Destination"
+            
+            RULE_NAME="JGR Demo Rule"
+            
+            ACE_INST_NAME='jgr-apic-engagement'
+            
+            API_PATH='/jgr-apic-engagement/message'
+
+            echo "Login to APIC with CP4I Admin User using API Key..."
+
+            ./apic client-creds:clear
+            
+            ./apic login --server $APIC_MGMT_SERVER --sso --context provider --apiKey $(params.APIC_API_KEY)
+
+            DESTINATION_URL=$(oc get integrationruntime $ACE_INST_NAME -n $(params.ACE_NAMESPACE) --ignore-not-found -o jsonpath='{.status.endpoints[?(@.name=="http endpoint")].uri}')$API_PATH
+
+            ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
+            
+            APIC_ENG_DEST_ID=$(jq -r --arg DESTINATION_NAME "$DESTINATION_NAME" '.destinations[] | select(.title==$DESTINATION_NAME) | .id' DestinationsListResponse.json)
+            
+            if [ -z "$APIC_ENG_DEST_ID" ]; then
+                echo "Preparing Destination File..."
+                ( echo "cat <<EOF" ; cat templates/template-apic-engagement-destination.yaml ;) | \
+                    DESTINATION_URL=${DESTINATION_URL} \
+                    sh > apic-engagement-destination.yaml
+                echo "Creating Destination..." 
+                ./apic -m engagement destinations:orgCreate --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE apic-engagement-destination.yaml
+            else
+                echo "APIC Engagement Destination already exists."
+            fi
+
+            rm -f DestinationsListResponse.json
+
+            ./apic -m engagement rules:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
+            
+            APIC_ENG_RULE_ID=$(jq -r --arg RULE_NAME "$RULE_NAME" '.rules[] | select(.title==$RULE_NAME) | .id' RulesListResponse.json)
+            
+            if [ -z "$APIC_ENG_RULE_ID" ]; then
+                ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
+                DESTINATION_ID=$(jq -r --arg DESTINATION_NAME "$DESTINATION_NAME" '.destinations[] | select(.title==$DESTINATION_NAME) | .id' DestinationsListResponse.json)
+                echo "Preparing Rule File..."
+                ( echo "cat <<EOF" ; cat templates/template-apic-engagement-rule.yaml ;) | \
+                    DESTINATION_ID=${DESTINATION_ID} \
+                    sh > apic-engagement-rule.yaml
+                echo "Creating Rule..."
+                ./apic -m engagement rules:orgCreate --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE apic-engagement-rule.yaml
+            else
+                echo "APIC Engagement Rule already exists."
+            fi
+
+            echo "Destination and Rule have been created."
+        - name: VERSION
+          value: latest
+      retries: 3
+      runAfter:
+        - apic-create-apps-subscription
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      timeout: 3h0m0s  
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.1"]
+        - input: "$(params.DEPLOY_API_CONNECT_DEMOS)"
+          operator: in
+          values: ["true"]
+        - input: "$(params.APIC_API_KEY)"
+          operator: notin
+          values: [""]
+      workspaces:
+        - name: cp4i-ws
     - name: apic-create-cp4i-secret
       params:
         - name: SCRIPT
@@ -3858,7 +3947,7 @@ spec:
           value: latest
       retries: 3
       runAfter:
-        - apic-create-apps-subscription
+        - apic-create-engagement-resources
       taskRef:
         kind: Task
         name: jgr-task-0.2
