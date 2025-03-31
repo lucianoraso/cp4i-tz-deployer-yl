@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250330-001"
+            REPO_SIGNATURE="JGR-20250330-002"
 
             echo "Setting up workspace for pipeline"
             
@@ -3753,7 +3753,7 @@ spec:
                 exit 0
             fi
 
-            cd workspace/cp4i-ws
+            cd workspace/cp4i-ws/cp4i-deployer-helper
 
             CONFIG_NAME="ace-email-designer-account"
 
@@ -3791,7 +3791,7 @@ spec:
             echo "Deploying Integration APIC Engagement..."
 
             oc apply -f instances/$(tasks.check-cp4i-version.results.output)/29-ace-is-apic-engagement-instance.yaml -n $(params.ACE_NAMESPACE)
-
+                                                                                         
             echo "Waiting for Integration Server to be deployed..."
 
             while ! oc wait --for=jsonpath='{.status.phase}'=Ready
@@ -3800,6 +3800,8 @@ spec:
 
             echo "Integration Server is deployed"
 
+            cd ..
+            
             echo "Creating Engagement Destination and Rule ..."
 
             ./apic --accept-license --live-help=false
