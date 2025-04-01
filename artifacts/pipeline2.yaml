@@ -3832,32 +3832,46 @@ spec:
 
             DESTINATION_URL=$(oc get integrationruntime $ACE_INST_NAME -n $(params.ACE_NAMESPACE) --ignore-not-found -o jsonpath='{.status.endpoints[?(@.name=="http endpoint")].uri}')$API_PATH
 
-            ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
-            
+            ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output . 
+
+            cat DestinationsListResponse.json
+
             APIC_ENG_DEST_ID=$(jq -r --arg DESTINATION_NAME "$DESTINATION_NAME" '.destinations[] | select(.title==$DESTINATION_NAME) | .id' DestinationsListResponse.json)
             
             if [ -z "$APIC_ENG_DEST_ID" ]; then
                 echo "Preparing Destination File..."
-                ( echo "cat <<EOF" ; cat templates/template-apic-engagement-destination.yaml ;) | \
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-apic-engagement-destination.yaml ;) | \
                     DESTINATION_URL=${DESTINATION_URL} \
                     sh > apic-engagement-destination.yaml
+                cat apic-engagement-destination.yaml
                 echo "Creating Destination..." 
-                ./apic -m engagement destinations:orgCreate --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE apic-engagement-destination.yaml
+                ./apic -m engagement destinations:orgCreate --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --debug apic-engagement-destination.yaml
             else
                 echo "APIC Engagement Destination already exists."
             fi
 
+            ls -l 
+
             rm -f DestinationsListResponse.json
 
             ./apic -m engagement rules:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
-            
+
+            cat RulesListResponse.json
+
             APIC_ENG_RULE_ID=$(jq -r --arg RULE_NAME "$RULE_NAME" '.rules[] | select(.title==$RULE_NAME) | .id' RulesListResponse.json)
             
             if [ -z "$APIC_ENG_RULE_ID" ]; then
-                ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --output .
+                ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --debug --output .
+                ls -l 
+                cat DestinationsListResponse.json
+                rm -f DestinationsListResponse.json
+                ls -l
+                ./apic -m engagement destinations:orgList --server $APIC_MGMT_SERVER --org $APIC_ORG --analytics-service $APIC_ANALYTICS_SERVICE --format json --debug --output .
+                ls -l
+                cat DestinationsListResponse.json
                 DESTINATION_ID=$(jq -r --arg DESTINATION_NAME "$DESTINATION_NAME" '.destinations[] | select(.title==$DESTINATION_NAME) | .id' DestinationsListResponse.json)
                 echo "Preparing Rule File..."
-                ( echo "cat <<EOF" ; cat templates/template-apic-engagement-rule.yaml ;) | \
+                ( echo "cat <<EOF" ; cat cp4i-deployer-helper/templates/template-apic-engagement-rule.yaml ;) | \
                     DESTINATION_ID=${DESTINATION_ID} \
                     sh > apic-engagement-rule.yaml
                 echo "Creating Rule..."
