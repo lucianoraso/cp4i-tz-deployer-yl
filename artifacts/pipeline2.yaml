@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250330-002"
+            REPO_SIGNATURE="JGR-20250412-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -1523,13 +1523,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r1'
+                    MQ_VERSION='9.4.0.10-r2'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r1'
+                    MQ_VERSION='9.4.2.0-r2'
             
             esac
 
@@ -1723,13 +1723,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r1'
+                    MQ_VERSION='9.4.0.10-r2'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r1'
+                    MQ_VERSION='9.4.2.0-r2'
             
             esac
 
@@ -1838,13 +1838,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r1'
+                    MQ_VERSION='9.4.0.10-r2'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r1'
+                    MQ_VERSION='9.4.2.0-r2'
             
             esac
 
@@ -1907,13 +1907,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r1'
+                    MQ_VERSION='9.4.0.10-r2'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r1'
+                    MQ_VERSION='9.4.2.0-r2'
             
             esac
 
@@ -1977,13 +1977,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r1'
+                    MQ_VERSION='9.4.0.10-r2'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r1'
+                    MQ_VERSION='9.4.2.0-r2'
             
             esac
 
