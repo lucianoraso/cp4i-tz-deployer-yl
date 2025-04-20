@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250414-001"
+            REPO_SIGNATURE="JGR-20250420-001"
 
             echo "Setting up workspace for pipeline"
             
