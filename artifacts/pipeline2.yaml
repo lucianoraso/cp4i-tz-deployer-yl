@@ -383,7 +383,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250420-001"
+            REPO_SIGNATURE="JGR-20250426-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -2103,7 +2103,7 @@ spec:
 
             echo "Waiting for Integration Server to be deployed..."
 
-            while ! oc wait --for=jsonpath='{.status.phase}'=Ready
+            while ! oc wait --for=jsonpath='{.status.phase}'=Stopped
             integrationruntimes/jgr-ace-fry-cp4i-latest -n
             $(params.ACE_NAMESPACE)  2>/dev/null; do sleep 30; done
 
