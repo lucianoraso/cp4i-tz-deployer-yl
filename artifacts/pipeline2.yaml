@@ -2103,7 +2103,21 @@ spec:
 
             echo "Waiting for Integration Server to be deployed..."
 
-            while ! oc wait --for=jsonpath='{.status.phase}'=Stopped
+            case "$(tasks.check-cp4i-version.results.output)" in
+
+                "16.1.0")
+            
+                    IR_STATUS_PHASE='Ready'
+            
+                    ;;
+            
+                "16.1.1")
+            
+                    IR_STATUS_PHASE='Stopped'
+            
+            esac
+
+            while ! oc wait --for=jsonpath='{.status.phase}'="$IR_STATUS_PHASE"
             integrationruntimes/jgr-ace-fry-cp4i-latest -n
             $(params.ACE_NAMESPACE)  2>/dev/null; do sleep 30; done
 
