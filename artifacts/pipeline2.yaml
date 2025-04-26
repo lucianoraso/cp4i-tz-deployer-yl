@@ -611,7 +611,7 @@ spec:
           value: >-
             set -o xtrace
 
-            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
+            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
 
             for NS in "${CP4I_NAMESPACES[@]}"
 
