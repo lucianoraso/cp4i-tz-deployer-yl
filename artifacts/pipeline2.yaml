@@ -317,6 +317,14 @@ spec:
       default: cp4i
       description: Namespace to deploy MQ Uniform Cluster assets
       type: string
+    - name: MQ_NHACRR_DC1
+      default: london
+      description: Namespace to deploy live MQ NHA CRR instance
+      type: string
+    - name: MQ_NHACRR_DC2
+      default: rome
+      description: Namespace to deploy recovery MQ NHA CRR instance
+      type: string
     - name: SF_USER
       default: ''
       description: User to connect to SF
@@ -383,7 +391,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250426-001"
+            REPO_SIGNATURE="JGR-20250429-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -556,7 +564,7 @@ spec:
           value: |-
             set -o xtrace
 
-            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
+            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE) $(params.MQ_NHACRR_DC1) $(params.MQ_NHACRR_DC2))
 
             for NS in "${CP4I_NAMESPACES[@]}"
 
@@ -611,7 +619,7 @@ spec:
           value: >-
             set -o xtrace
 
-            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE))
+            CP4I_NAMESPACES=($(params.DP_NAMESPACE) $(params.MQ_NAMESPACE) $(params.MQ_UNIFORM_CLUSTER_NAMESPACE) $(params.MQ_NHACRR_DC1) $(params.MQ_NHACRR_DC2))
 
             for NS in "${CP4I_NAMESPACES[@]}"
 
@@ -2025,6 +2033,160 @@ spec:
           values: ["true"]
       workspaces:
         - name: cp4i-ws
+    - name: mq-nha-crr-instance-deployment
+      params:
+        - name: SCRIPT
+          value: >-
+            set -o xtrace
+
+            if [[ -z $(oc get deployment ibm-mq-operator -n openshift-operators --ignore-not-found -o jsonpath='{.metadata.labels.olm\.owner}') ]]; then 
+                echo "Skipping Queue Managers with CRR configuration deployment, Operator was not installed."
+                exit 0
+            fi
+
+            cd workspace/cp4i-ws/cp4i-deployer-helper
+
+            echo "Preconfiguring Queue Managers for CRR..."
+
+            OCP_CLUSTER_DOMAIN=$(oc get IngressController default -n openshift-ingress-operator -o jsonpath='{.status.domain}')
+
+            QMGR_DCS=($(params.MQ_NHACRR_DC1) $(params.MQ_NHACRR_DC2))
+            
+            for DC in "${QMGR_DCS[@]}"
+            
+            do
+
+                echo "Creating QMgr CA..."
+    
+                oc apply -f resources/03h-qmgr-ss-issuer.yaml -n $DC
+
+                ( echo "cat <<EOF" ; cat templates/template-mq-crr-ca-cert.yaml ;) | \
+                    QMGR_LOCATION=${DC} \
+                    sh > qmgr-ca-cert.yaml
+
+                oc apply -f qmgr-ca-cert.yaml -n $DC
+    
+                ( echo "cat <<EOF" ; cat templates/template-mq-crr-ca-issuer.yaml ;) | \
+                    QMGR_LOCATION=${DC} \
+                    sh > qmgr-ca-issuer.yaml
+    
+                oc apply -f qmgr-ca-issuer.yaml -n $DC
+    
+                echo "Cleaning up temp file..."
+    
+                rm -f qmgr-ca-cert.yaml
+    
+                rm -f qmgr-ca-issuer.yaml
+    
+                CERT_TEMPLATES=(ext int app)
+    
+                echo "Creating Certificate Template..."
+    
+                for CT in "${CERT_TEMPLATES[@]}"
+    
+                do
+        
+                    ( echo "cat <<EOF" ; cat templates/template-mq-crr-cert-$CT.yaml ;) | \
+                        QMGR_LOCATION=${DC} \
+                        OCP_CLUSTER_DOMAIN=${OCP_CLUSTER_DOMAIN} \
+                        sh > mq-certificate.yaml
+        
+                    echo "Creating Certificate..."
+        
+                    oc apply -f mq-certificate.yaml -n $DC
+        
+                    echo "Cleaning up temp file..."
+        
+                    rm -f mq-certificate.yaml
+                
+                done
+
+            done
+
+            echo "Copy External Certificates..."
+
+            oc get secret nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls -n $(params.MQ_NHACRR_DC1) -o yaml > nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml
+
+            yq -i 'del(.metadata.creationTimestamp, .metadata.namespace, .metadata.resourceVersion, .metadata.uid)' \
+                nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml
+
+            oc apply -f nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml -n $(params.MQ_NHACRR_DC2)
+
+            oc get secret nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls -n $(params.MQ_NHACRR_DC2) -o yaml > nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls.yaml
+
+            yq -i 'del(.metadata.creationTimestamp, .metadata.namespace, .metadata.resourceVersion, .metadata.uid)' \
+                nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls.yaml
+
+            oc apply -f nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls.yaml -n $(params.MQ_NHACRR_DC1)
+
+            echo "Create Configuration for Queue Manager..."
+
+            oc apply -f resources/03i-qmgr-mqsc-ini-config-crr.yaml -n $(params.MQ_NHACRR_DC1)
+
+            oc apply -f resources/03i-qmgr-mqsc-ini-config-crr.yaml -n $(params.MQ_NHACRR_DC2)
+
+            echo "Queue Managers preconfiguration for CRR completed."
+
+            echo "Deploying Queue Manager with CRR configuration..."
+
+            echo "Setting MQ Version"
+            
+            MQ_VERSION='9.4.2.0-r2'
+            
+            echo "Preparing queue manager instance manifest"
+
+            ( echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/32a-qmgr-nha-crr-instance.yaml ;) | \
+                OCP_CLUSTER_DOMAIN=${OCP_CLUSTER_DOMAIN} \
+                MQ_VERSION=${MQ_VERSION} \
+                sh > 32-qmgr-nha-crr-instance.yaml
+
+            echo "Deploying queue manager instance"
+
+            oc apply -f 32-qmgr-nha-crr-instance.yaml -n $(params.MQ_NHACRR_DC1)
+
+            echo "Cleaning up temp file..."
+
+            rm -f 32-qmgr-nha-crr-instance.yaml
+
+            ( echo "cat <<EOF" ; cat instances/$(tasks.check-cp4i-version.results.output)/32b-qmgr-nha-crr-instance.yaml ;) | \
+                OCP_CLUSTER_DOMAIN=${OCP_CLUSTER_DOMAIN} \
+                MQ_VERSION=${MQ_VERSION} \
+                sh > 32-qmgr-nha-crr-instance.yaml
+
+            echo "Deploying Queue Manager instance..."
+
+            oc apply -f 32-qmgr-nha-crr-instance.yaml -n $(params.MQ_NHACRR_DC2)
+            
+            echo "Waiting for queue manager instance to be ready..."
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/exampleqm -n
+            $(params.MQ_NHACRR_DC1)  2>/dev/null; do sleep 30; done
+
+            while ! oc wait --for=jsonpath='{.status.phase}'=Running
+            queuemanager/exampleqm -n
+            $(params.MQ_NHACRR_DC2)  2>/dev/null; do sleep 30; done
+
+            echo "Queue manager instance is ready"
+        - name: VERSION
+          value: latest
+      runAfter:
+        - mq-bake-image-instance-deployment
+      taskRef:
+        kind: Task
+        name: jgr-task-0.2
+      when:
+        - input: "$(tasks.setup-workspace.results.output)"
+          operator: in
+          values: ["true"]
+        - input: "$(tasks.check-cp4i-version.results.output)"
+          operator: in
+          values: ["16.1.1"]
+        - input: "$(params.DEPLOY_MQ_DEMOS)"
+          operator: in
+          values: ["true"]
+      workspaces:
+        - name: cp4i-ws
     - name: ace-configuration-barauth
       params:
         - name: SCRIPT
@@ -2069,7 +2231,7 @@ spec:
         - name: VERSION
           value: latest
       runAfter:
-        - mq-bake-image-instance-deployment
+        - mq-nha-crr-instance-deployment
       taskRef:
         kind: Task
         name: jgr-task-0.2
