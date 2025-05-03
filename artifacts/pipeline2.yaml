@@ -391,7 +391,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250429-001"
+            REPO_SIGNATURE="JGR-20250503-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -2105,12 +2105,20 @@ spec:
 
             echo "Copy External Certificates..."
 
+            while ! oc wait --for=jsonpath='{.status.conditions[0].type}'=Ready 
+            certificate/nhacrr-$(params.MQ_NHACRR_DC1)-ext -n 
+            $(params.MQ_NHACRR_DC1) 2>/dev/null; do sleep 30; done
+
             oc get secret nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls -n $(params.MQ_NHACRR_DC1) -o yaml > nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml
 
             yq -i 'del(.metadata.creationTimestamp, .metadata.namespace, .metadata.resourceVersion, .metadata.uid)' \
                 nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml
 
             oc apply -f nhacrr-$(params.MQ_NHACRR_DC1)-ext-tls.yaml -n $(params.MQ_NHACRR_DC2)
+
+            while ! oc wait --for=jsonpath='{.status.conditions[0].type}'=Ready 
+            certificate/nhacrr-$(params.MQ_NHACRR_DC2)-ext -n 
+            $(params.MQ_NHACRR_DC2) 2>/dev/null; do sleep 30; done
 
             oc get secret nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls -n $(params.MQ_NHACRR_DC2) -o yaml > nhacrr-$(params.MQ_NHACRR_DC2)-ext-tls.yaml
 

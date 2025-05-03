@@ -26,6 +26,7 @@ After login to your cluster, execute the following two commands depending if you
 ```
 oc apply -f artifacts/pipeline1.yaml
 tkn pipeline start cp4i-demo \
+    --namespace default \
     --use-param-defaults \
     --workspace name=cp4i-ws,volumeClaimTemplateFile=artifacts/workspace-template.yaml \
     --pod-template artifacts/pod-template.yaml
@@ -35,6 +36,7 @@ tkn pipeline start cp4i-demo \
 ```
 oc apply -f artifacts/pipeline1.yaml
 tkn pipeline start cp4i-demo \
+    --namespace default \
     --use-param-defaults \
     --workspace name=cp4i-ws,volumeClaimTemplateFile=artifacts/workspace-template.yaml \
     --pod-template artifacts/pod-template.yaml \
@@ -58,7 +60,7 @@ And in a little bit less than two hours, you will see the following result in th
 
 ![OCP Console PL1](images/OCP_Console_PL1.png)
 
-The information to access CP4I and the rest of the capabilities deployed are stored in a set of configmaps in the default namespace. Use the OCP Console to get the corresponding values. This is the initial list:
+The information to access CP4I and the rest of the capabilities deployed are stored in a set of configmaps in the default namespace. This is the initial list:
 
 ```
 pipeline-cp4i-demo-output
@@ -66,6 +68,17 @@ pipeline-ea-demo-output
 pipeline-lsr-demo-output
 pipeline-mailpit-demo-output 
 ```
+
+Use the OCP Console to get the corresponding values, or if you have `yq` installed in your workstation you can use the following commands instead:
+
+```
+oc get configmap/pipeline-cp4i-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-ea-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-lsr-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-mailpit-demo-output -n default -o yaml | yq .data
+```
+
+In case you do not have `yq` already installed, you can get instructions to install it in the [official yq git repo](https://github.com/mikefarah/yq). 
 
 Note the core deployment does not include the extra demo assets like App Connect Integrations nor Event Streams topics and connector nor populate the EEM catalog nor configure the extra APIC POrg resources and the extra gateway as well as the assemblies with the declarative API and Product. If you want them to be included get the corresponding token and api key following the instructions listed [here](https://ibm.github.io/event-automation/eem/security/api-tokens/#creating-a-token) for EEM and [here](https://www.ibm.com/docs/en/api-connect/10.0.x?topic=applications-managing-platform-rest-api-keys) for APIC.
 
@@ -75,6 +88,7 @@ Then run the following two commands once the previous pipeline run has completed
 ```
 oc apply -f artifacts/pipeline2.yaml
 tkn pipeline start cp4i-config \
+    --namespace default \
     --use-param-defaults \
     --workspace name=cp4i-ws,volumeClaimTemplateFile=artifacts/workspace-template.yaml \
     --pod-template artifacts/pod-template.yaml \
@@ -88,12 +102,24 @@ After approximately fortyfive minutes, you will see the following result in the 
 
 ![OCP Console PL2](images/OCP_Console_PL2.png)
 
-The second pipeline will create a few extra configmaps with the result of the pipeline execution as well as information to access APIC Portals and the data to configure the extra gateway in case you want to demo this functionality.
+The second pipeline will create a few extra configmaps with the result of the pipeline execution as well as information to access APIC Portals and the data to configure the extra gateway in case you want to demo this functionality. This is the list:
 
 ```
-pipeline-apic-ptl-demo-output
 pipeline-cp4i-config-output
+pipeline-apic-demo-output
 pipeline-extra-api-gtwy-demo-output
+pipeline-dp-gtwy-demo-output
+pipeline-qmgr-demo-output
+```
+
+And the commands to use `yq` to get the data without accessing the OCP Console are the following:
+
+```
+oc get configmap/pipeline-cp4i-config-output -n default -o yaml | yq .data
+oc get configmap/pipeline-apic-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-extra-api-gtwy-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-dp-gtwy-demo-output -n default -o yaml | yq .data
+oc get configmap/pipeline-qmgr-demo-output -n default -o yaml | yq .data
 ```
 
 Clone and have fun. Happy demoing!
