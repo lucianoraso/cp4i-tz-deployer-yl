@@ -47,7 +47,7 @@ You do not have to add the version parameters when using CP4I v16.1.1 because th
 
 ```
     --param EA_OIDC="true"
-``
+```
 
 Additionally, if you need to demo License Service you can add the following parameters as well. And do not forget to add a `\` at the end of the last line in order to include the new lines:
 
