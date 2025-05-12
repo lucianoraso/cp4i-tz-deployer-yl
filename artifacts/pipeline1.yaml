@@ -326,7 +326,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250503-001"
+            REPO_SIGNATURE="JGR-20250510-001"
 
             echo "Setting up workspace for pipeline"
 
@@ -1897,13 +1897,13 @@ spec:
 
                 "16.1.0")
             
-                    MQ_VERSION='9.4.0.10-r2'
+                    MQ_VERSION='9.4.0.11-r1'
             
                     ;;
             
                 "16.1.1")
             
-                    MQ_VERSION='9.4.2.0-r2'
+                    MQ_VERSION='9.4.2.1-r1'
             
             esac
 
