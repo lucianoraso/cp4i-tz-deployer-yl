@@ -391,7 +391,7 @@ spec:
           value: >-
             set -o xtrace
 
-            REPO_SIGNATURE="JGR-20250510-001"
+            REPO_SIGNATURE="JGR-20250513-001"
 
             echo "Setting up workspace for pipeline"
             
@@ -750,7 +750,7 @@ spec:
 
             echo "Updating template with Bootsrap info..."
 
-            ES_VERSION="11.6.1"
+            ES_VERSION="11.7.0"
 
             ( echo "cat <<EOF" ; cat templates/template-es-kafka-connect.yaml ;) | \
                 ES_BOOTSTRAP_SERVER=${ES_BOOTSTRAP_SERVER} \
