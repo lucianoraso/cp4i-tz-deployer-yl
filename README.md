@@ -8,11 +8,11 @@ It will get you an environment like the one below:
 
 ![Platform UI](images/Platform_UI.png)
 
-For these assets to work you will need an OCP cluster in TechZone using the **OpenShift VMWare Cluster - UPI - Deployer - V2** template which is part of the *TechZone Certified Base Images* collection under *Pre-Installed Software*. You can access the collection clicking [here](https://techzone.ibm.com/collection/tech-zone-certified-base-images/journey-pre-installed-software). You can use the following image as a reference: 
+For these assets to work you will need an OCP cluster in TechZone using the **OpenShift Cluster (OCP-V) - IBM Cloud** template which is part of the *TechZone Certified Base Images* collection under *Base Openshift*. You can access the collection clicking [here](https://techzone.ibm.com/collection/tech-zone-certified-base-images/journey-base-open-shift). You can use the following image as a reference:
 
 ![TechZone Collection](images/TZ_Collection.png)
 
-When making the reservation select **v4.16** for the OCP version and at least 1TB of ODF storage and 5 nodes with 32 cores and 128 GB of memory to get the best results. Note you can use OCP v4.15 but I recommend you use the latest version if possible. Some people has reported issues when using the default value for the *Master Node Flavor* so I suggest you change the value to **8 vCPUs X 32 GB** to get better results. The following image shows the recommended values:
+When making the reservation select **v4.16** for the OCP version and 5 nodes with 32 cores and 128 GB of memory to get the best results. Note you can use OCP v4.15 but I recommend you use the latest version if possible. Note that with the new OCP-V type of cluster in TechZone you do not need to select storage type because automatically provisions external ODF storage. The following image shows the recommended values:
 
 ![TechZone Reservation](images/TZ_Reservation.png)
 

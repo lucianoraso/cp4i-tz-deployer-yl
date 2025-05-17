@@ -182,15 +182,15 @@ spec:
       description: Version of CP4I Platform UI to deploy
       type: string
     - name: DEFAULT_SC
-      default: ocs-storagecluster-ceph-rbd
+      default: ocs-external-storagecluster-ceph-rbd
       description: Default Storage Class for Cluster
       type: string
     - name: OCP_BLOCK_STORAGE
-      default: ocs-storagecluster-ceph-rbd
+      default: ocs-external-storagecluster-ceph-rbd
       description: Block Storage Class for Cluster
       type: string
     - name: OCP_FILE_STORAGE
-      default: ocs-storagecluster-cephfs
+      default: ocs-external-storagecluster-cephfs
       description: File Storage Class for Cluster
       type: string
     - name: EEM_APIC_INT
