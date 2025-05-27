@@ -698,6 +698,10 @@ spec:
 
             oc apply -f resources/02a-es-initial-config-ea-topics.yaml -n
             $(params.CP4I_NAMESPACE) 
+            oc apply -f resources/02a-es-initial-config-demo-topics.yaml -n
+            $(params.CP4I_NAMESPACE) 
+
+          
 
             oc apply -f resources/02a-es-initial-config-watsonx-topics.yaml -n
             $(params.CP4I_NAMESPACE) 
