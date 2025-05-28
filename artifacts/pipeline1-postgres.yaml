@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
-  name: cp4i-demoonly-postgres
+  name: cp4i-only-postgres
   namespace: default
 spec:
   workspaces:
